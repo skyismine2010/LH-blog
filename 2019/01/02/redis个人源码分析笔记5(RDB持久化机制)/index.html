@@ -5,20 +5,21 @@
   
 
   
-  <title>Lh的博客</title>
+  <title>redis个人源码分析笔记5(RDB持久化机制) | Lh的博客</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <meta name="description" content="1.持久化大家都是知道，redis支持两种持久化的操作，AOF和RDB方式。那么为什么redis需要支持这两种持久化方式呢？其实redis的作者写过一篇文章很好的说明了为什么他要这样来进行设计，原文地址在这里，我也是按照这篇文章的思路结合redis的源码所做的个人总结。如果有不对的地方请指正谢谢。 首先要说说什么是持久化的操作。    持久化就是把内存中的数据写入到断电后数据不会丢失的设备中。通常">
+<meta name="keywords" content="redis">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Lh的博客">
+<meta property="og:title" content="redis个人源码分析笔记5(RDB持久化机制)">
 <meta property="og:url" content="http://yoursite.com/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/index.html">
 <meta property="og:site_name" content="Lh的博客">
 <meta property="og:description" content="1.持久化大家都是知道，redis支持两种持久化的操作，AOF和RDB方式。那么为什么redis需要支持这两种持久化方式呢？其实redis的作者写过一篇文章很好的说明了为什么他要这样来进行设计，原文地址在这里，我也是按照这篇文章的思路结合redis的源码所做的个人总结。如果有不对的地方请指正谢谢。 首先要说说什么是持久化的操作。    持久化就是把内存中的数据写入到断电后数据不会丢失的设备中。通常">
 <meta property="og:locale" content="default">
 <meta property="og:image" content="https://user-gold-cdn.xitu.io/2018/12/24/167dde91d8b97674?w=950&h=93&f=png&s=4372">
 <meta property="og:image" content="https://user-gold-cdn.xitu.io/2018/12/24/167ddf4ba2f83272?w=643&h=63&f=png&s=2543">
-<meta property="og:updated_time" content="2019-01-02T05:48:35.588Z">
+<meta property="og:updated_time" content="2019-01-02T06:17:55.073Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Lh的博客">
+<meta name="twitter:title" content="redis个人源码分析笔记5(RDB持久化机制)">
 <meta name="twitter:description" content="1.持久化大家都是知道，redis支持两种持久化的操作，AOF和RDB方式。那么为什么redis需要支持这两种持久化方式呢？其实redis的作者写过一篇文章很好的说明了为什么他要这样来进行设计，原文地址在这里，我也是按照这篇文章的思路结合redis的源码所做的个人总结。如果有不对的地方请指正谢谢。 首先要说说什么是持久化的操作。    持久化就是把内存中的数据写入到断电后数据不会丢失的设备中。通常">
 <meta name="twitter:image" content="https://user-gold-cdn.xitu.io/2018/12/24/167dde91d8b97674?w=950&h=93&f=png&s=4372">
   
@@ -74,12 +75,26 @@
         <section id="main"><article id="post-redis个人源码分析笔记5(RDB持久化机制)" class="article article-type-post" itemscope="" itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/" class="article-date">
-  <time datetime="2019-01-02T05:48:22.955Z" itemprop="datePublished">2019-01-02</time>
+  <time datetime="2019-01-02T05:58:32.000Z" itemprop="datePublished">2019-01-02</time>
 </a>
     
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/redis源码分析笔记/">redis源码分析笔记</a>
+  </div>
+
   </div>
   <div class="article-inner">
     
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      redis个人源码分析笔记5(RDB持久化机制)
+    </h1>
+  
+
+      </header>
     
     <div class="article-entry" itemprop="articleBody">
       
@@ -160,28 +175,30 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://yoursite.com/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/" data-id="cjqervwiq0005oskpetsb0xj6" class="article-share-link">Share</a>
+      <a data-url="http://yoursite.com/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/" data-id="cjqes54je0004tkkps43us5gw" class="article-share-link">Share</a>
       
       
+  <ul class="article-tag-list"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/redis/">redis</a></li></ul>
+
     </footer>
   </div>
   
     
 <nav id="article-nav">
   
-    <a href="/2019/01/02/redis个人源码分析笔记1-hyperloglog（golang实现）-md/" id="article-nav-newer" class="article-nav-link-wrap">
+    <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/" id="article-nav-newer" class="article-nav-link-wrap">
       <strong class="article-nav-caption">Newer</strong>
       <div class="article-nav-title">
         
-          redis个人源码分析笔记1----hyperloglog（golang实现）
+          redis个人源码分析笔记3(redis的事件驱动源码分析)
         
       </div>
     </a>
   
   
-    <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/" id="article-nav-older" class="article-nav-link-wrap">
+    <a href="/2019/01/02/redis个人源码分析笔记1(hyperloglog+golang实现)/" id="article-nav-older" class="article-nav-link-wrap">
       <strong class="article-nav-caption">Older</strong>
-      <div class="article-nav-title"></div>
+      <div class="article-nav-title">redis个人源码分析笔记1----hyperloglog（golang实现）</div>
     </a>
   
 </nav>
@@ -194,12 +211,33 @@
           <aside id="sidebar">
   
     
+  <div class="widget-wrap">
+    <h3 class="widget-title">Categories</h3>
+    <div class="widget">
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/redis源码分析笔记/">redis源码分析笔记</a></li></ul>
+    </div>
+  </div>
+
 
   
     
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list"><li class="tag-list-item"><a class="tag-list-link" href="/tags/redis/">redis</a></li></ul>
+    </div>
+  </div>
+
 
   
     
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tag Cloud</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/redis/" style="font-size: 10px;">redis</a>
+    </div>
+  </div>
+
   
     
   <div class="widget-wrap">
@@ -218,23 +256,23 @@
       <ul>
         
           <li>
-            <a href="/2019/01/02/redis个人源码分析笔记1-hyperloglog（golang实现）-md/">redis个人源码分析笔记1----hyperloglog（golang实现）</a>
+            <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/">redis个人源码分析笔记2(dict的实现原理)</a>
           </li>
         
           <li>
-            <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/">(no title)</a>
+            <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/">redis个人源码分析笔记3(redis的事件驱动源码分析)</a>
           </li>
         
           <li>
-            <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/">(no title)</a>
+            <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/">redis个人源码分析笔记5(RDB持久化机制)</a>
           </li>
         
           <li>
-            <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/">(no title)</a>
+            <a href="/2019/01/02/redis个人源码分析笔记1(hyperloglog+golang实现)/">redis个人源码分析笔记1----hyperloglog（golang实现）</a>
           </li>
         
           <li>
-            <a href="/2019/01/02/redis个人源码分析笔记1(hpyerloglog原理）/">(no title)</a>
+            <a href="/2019/01/02/redis个人源码分析笔记4(hash对象的存储)/">redis个人源码分析笔记4(hash对象的存储)</a>
           </li>
         
       </ul>

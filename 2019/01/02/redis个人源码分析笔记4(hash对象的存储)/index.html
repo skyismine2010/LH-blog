@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>redis个人源码分析笔记4(hash对象的存储) | Lh的博客</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="redis的hash的存储1.redis-obj基本介绍众所周知，redis支持5种基础数据类型，分别是：  string list set hset hash  每种数据类型都存在至少一种encoding方式。redis把上面几种基础类型抽象成为一个结构体叫做 ```   12345678910```typedef struct redisObject &amp;#123;    unsigned ty">
+<meta name="keywords" content="redis">
+<meta property="og:type" content="article">
+<meta property="og:title" content="redis个人源码分析笔记4(hash对象的存储)">
+<meta property="og:url" content="http://yoursite.com/2019/01/02/redis个人源码分析笔记4(hash对象的存储)/index.html">
+<meta property="og:site_name" content="Lh的博客">
+<meta property="og:description" content="redis的hash的存储1.redis-obj基本介绍众所周知，redis支持5种基础数据类型，分别是：  string list set hset hash  每种数据类型都存在至少一种encoding方式。redis把上面几种基础类型抽象成为一个结构体叫做 ```   12345678910```typedef struct redisObject &amp;#123;    unsigned ty">
+<meta property="og:locale" content="default">
+<meta property="og:image" content="https://user-gold-cdn.xitu.io/2018/11/23/1673e290371def97?w=670&h=371&f=png&s=74908">
+<meta property="og:updated_time" content="2019-01-02T06:17:33.090Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="redis个人源码分析笔记4(hash对象的存储)">
+<meta name="twitter:description" content="redis的hash的存储1.redis-obj基本介绍众所周知，redis支持5种基础数据类型，分别是：  string list set hset hash  每种数据类型都存在至少一种encoding方式。redis把上面几种基础类型抽象成为一个结构体叫做 ```   12345678910```typedef struct redisObject &amp;#123;    unsigned ty">
+<meta name="twitter:image" content="https://user-gold-cdn.xitu.io/2018/11/23/1673e290371def97?w=670&h=371&f=png&s=74908">
+  
+    <link rel="alternate" href="/atom.xml" title="Lh的博客" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Lh的博客</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">努力学习吧，骚年</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="http://yoursite.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-redis个人源码分析笔记4(hash对象的存储)" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/01/02/redis个人源码分析笔记4(hash对象的存储)/" class="article-date">
+  <time datetime="2019-01-02T05:58:32.000Z" itemprop="datePublished">2019-01-02</time>
+</a>
+    
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/redis源码分析笔记/">redis源码分析笔记</a>
+  </div>
+
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      redis个人源码分析笔记4(hash对象的存储)
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h1 id="redis的hash的存储"><a href="#redis的hash的存储" class="headerlink" title="redis的hash的存储"></a>redis的hash的存储</h1><h2 id="1-redis-obj基本介绍"><a href="#1-redis-obj基本介绍" class="headerlink" title="1.redis-obj基本介绍"></a>1.redis-obj基本介绍</h2><p>众所周知，redis支持5种基础数据类型，分别是：</p>
+<ul>
+<li>string</li>
+<li>list</li>
+<li>set</li>
+<li>hset</li>
+<li>hash</li>
+</ul>
+<p>每种数据类型都存在至少一种encoding方式。redis把上面几种基础类型抽象成为一个结构体叫做 <figure class="highlight plain"><figcaption><span>```   </span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">```</span><br><span class="line">typedef struct redisObject &#123;</span><br><span class="line">    unsigned type:4;   //type就是redis的基础数据类型</span><br><span class="line">    unsigned encoding:4;   //这个是具体数据类型的编码方式</span><br><span class="line">    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or</span><br><span class="line">                            * LFU data (least significant 8 bits frequency</span><br><span class="line">                            * and most significant 16 bits access time). */</span><br><span class="line">    int refcount;</span><br><span class="line">    void *ptr;</span><br><span class="line">&#125; robj;</span><br></pre></td></tr></table></figure></p>
+<p>本文就重点介绍下hash类型在redis中是如何存储和使用的。</p>
+<h2 id="2-redis-hash类型"><a href="#2-redis-hash类型" class="headerlink" title="2. redis hash类型"></a>2. redis hash类型</h2><p>hash类型是一个可以存储多个k-v键值对的结构，典型的样子是这样的：</p>
+<p><img src="https://user-gold-cdn.xitu.io/2018/11/23/1673e290371def97?w=670&amp;h=371&amp;f=png&amp;s=74908" alt=""></p>
+<p>其实具体的命令查看<a href="https://redis.io/commands#hash" target="_blank" rel="noopener">redis的官方文档</a>是最方便的，但是我还是把常用的总结下，也给自己加深下影响。</p>
+<h3 id="2-1-hash的典型命令"><a href="#2-1-hash的典型命令" class="headerlink" title="2.1 hash的典型命令"></a>2.1 hash的典型命令</h3><p>典型的命令格式：  </p>
+<blockquote>
+<p>hset  redis-obj-name  k1 v1  k2 v2 …  </p>
+</blockquote>
+<hr>
+<blockquote>
+<p>hget redis_obj_name  k1</p>
+</blockquote>
+<p>注意这个命令是操作hash对象的，<strong>和hset对象没有关系</strong>，不要搞混淆了。<br>例如：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">redis&gt; HSET myhash field1 &quot;Hello&quot;</span><br><span class="line">(integer) 1</span><br><span class="line">redis&gt; HGET myhash field1</span><br><span class="line">&quot;Hello&quot;</span><br><span class="line">redis&gt;</span><br></pre></td></tr></table></figure></p>
+<p>看上去很简单，那么这个myhash对象在redis的内存中是如何存储的呢？直接上源码，大家看的比较清楚：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">void hsetCommand(client *c) &#123;</span><br><span class="line">    int i, created = 0;</span><br><span class="line">    robj *o;</span><br><span class="line"></span><br><span class="line">    //首先参数必须是双数，很好理解</span><br><span class="line">    if ((c-&gt;argc % 2) == 1) &#123;</span><br><span class="line">        addReplyError(c,&quot;wrong number of arguments for HMSET&quot;);</span><br><span class="line">        return;</span><br><span class="line">    &#125;</span><br><span class="line">   //函数名称写的很清楚，找不到就创建一个redis-obj对象</span><br><span class="line">    if ((o = hashTypeLookupWriteOrCreate(c,c-&gt;argv[1])) == NULL) return;</span><br><span class="line">    hashTypeTryConversion(o,c-&gt;argv,2,c-&gt;argc-1);//这里是两点，它居然会尝试去转换下hash的type</span><br><span class="line"></span><br><span class="line">    for (i = 2; i &lt; c-&gt;argc; i += 2)</span><br><span class="line">        created += !hashTypeSet(o,c-&gt;argv[i]-&gt;ptr,c-&gt;argv[i+1]-&gt;ptr,HASH_SET_COPY);</span><br><span class="line"></span><br><span class="line">    /* HMSET (deprecated) and HSET return value is different. */</span><br><span class="line">    char *cmdname = c-&gt;argv[0]-&gt;ptr;</span><br><span class="line">    if (cmdname[1] == &apos;s&apos; || cmdname[1] == &apos;S&apos;) &#123;</span><br><span class="line">        /* HSET */</span><br><span class="line">        addReplyLongLong(c, created);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        /* HMSET */</span><br><span class="line">        addReply(c, shared.ok);</span><br><span class="line">    &#125;</span><br><span class="line">    signalModifiedKey(c-&gt;db,c-&gt;argv[1]);</span><br><span class="line">    notifyKeyspaceEvent(NOTIFY_HASH,&quot;hset&quot;,c-&gt;argv[1],c-&gt;db-&gt;id);</span><br><span class="line">    server.dirty++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>那我们看看<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">```</span><br><span class="line">robj *hashTypeLookupWriteOrCreate(client *c, robj *key) &#123;</span><br><span class="line">    robj *o = lookupKeyWrite(c-&gt;db,key);</span><br><span class="line">    if (o == NULL) &#123;</span><br><span class="line">        o = createHashObject();  //这里会去创建一个hash objecjt</span><br><span class="line">        dbAdd(c-&gt;db,key,o);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        if (o-&gt;type != OBJ_HASH) &#123;</span><br><span class="line">            addReply(c,shared.wrongtypeerr);</span><br><span class="line">            return NULL;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    return o;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">robj *createHashObject(void) &#123;</span><br><span class="line">    unsigned char *zl = ziplistNew();</span><br><span class="line">    robj *o = createObject(OBJ_HASH, zl);</span><br><span class="line">    o-&gt;encoding = OBJ_ENCODING_ZIPLIST;</span><br><span class="line">    return o;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>看上面，<figure class="highlight plain"><figcaption><span>table结构来存储，为什么用压缩链表结构呢？其实不用急，还有一个函数```hashTypeTryConversion```这个函数没有看，现在再看看它的实现：</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">```</span><br><span class="line">/* Check the length of a number of objects to see if we need to convert a</span><br><span class="line"> * ziplist to a real hash. Note that we only check string encoded objects</span><br><span class="line"> * as their string length can be queried in constant time. */</span><br><span class="line"></span><br><span class="line">void hashTypeTryConversion(robj *o, robj **argv, int start, int end) &#123;</span><br><span class="line">    int i;</span><br><span class="line"></span><br><span class="line">    if (o-&gt;encoding != OBJ_ENCODING_ZIPLIST) return;</span><br><span class="line"></span><br><span class="line">    for (i = start; i &lt;= end; i++) &#123;</span><br><span class="line">        if (sdsEncodedObject(argv[i]) &amp;&amp;</span><br><span class="line">            sdslen(argv[i]-&gt;ptr) &gt; server.hash_max_ziplist_value)</span><br><span class="line">        &#123;</span><br><span class="line">            hashTypeConvert(o, OBJ_ENCODING_HT);</span><br><span class="line">            break;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p> 其实上面的注释写的很清楚，如果是ZIPLIST的编码方式，遍历下ziplist，如果当前的长度已经大于<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"> </span><br></pre></td></tr></table></figure></p>
+<p>hash-max-ziplist-entries 512<br>hash-max-ziplist-value 64<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"> 看到这里貌似有点明白了，原来redis对于小数字，短字符串,为了能比较高效的利用内存，都保存到ziplist中，而不是直接放到hash-table结构中，当数字或者字符串超出一定的阈值时候，才会改用hash表的存储方式，这样达到节约内存的作用啊。在这里不得不感叹下redis的作者真不怕麻烦，为了能节约一点内存，可以说费劲了心思。    </span><br><span class="line">总结下，redis对于hash对象提供了两种存储方式，也就是```redisObject.encoding```变量的取值是有两个的，分别如下：</span><br><span class="line">- OBJ_ENCODING_ZIPLIST  </span><br><span class="line">- OBJ_ENCODING_HT</span><br><span class="line"></span><br><span class="line">这两种编码方式内部的数据结构是什么样子的呢？ 首先我们先看看```OBJ_ENCODING_ZIPLIST ``` 类型的存储方式</span><br><span class="line"></span><br><span class="line">## 2.2 OBJ_ENCODING_ZIPLIST存储方式</span><br><span class="line">在```createHashObject```函数中，调用了ziplist的创建函数```ziplistNew```,我们来看下这个函数的实现：</span><br></pre></td></tr></table></figure></p>
+<p>/<em> Create a new empty ziplist. </em>/<br>unsigned char <em>ziplistNew(void) {<br>    unsigned int bytes = ZIPLIST_HEADER_SIZE+1;<br>    unsigned char </em>zl = zmalloc(bytes);<br>    ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);<br>    ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE);<br>    ZIPLIST_LENGTH(zl) = 0;<br>    zl[bytes-1] = ZIP_END;<br>    return zl;<br>}</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">代码里面用了一堆宏，看上去不太直观，画个图看下，就很清晰了：</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">![](https://user-gold-cdn.xitu.io/2018/11/23/1673e88b9462c329?w=662&amp;h=83&amp;f=png&amp;s=15387)</span><br><span class="line">再附上ziplist的header的注释：</span><br></pre></td></tr></table></figure>
+<p>/* The size of a ziplist header: two 32 bit integers for the total</p>
+<ul>
+<li>bytes count and last item offset. One 16 bit integer for the number</li>
+<li>of items field. */<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">结合代码很轻松就应该能看懂了。</span><br><span class="line"></span><br><span class="line">再看上面的代码```hsetCommand```中，调用了```hashTypeSet```函数进行插入数据</span><br><span class="line">我们再看看对于``OBJ_ENCODING_ZIPLIST``的编码方式，如何插入数据。</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>int hashTypeSet(robj *o, sds field, sds value, int flags) {<br>    int update = 0;</p>
+<pre><code>if (o-&gt;encoding == OBJ_ENCODING_ZIPLIST) {
+    unsigned char *zl, *fptr, *vptr;
+
+    zl = o-&gt;ptr;
+    fptr = ziplistIndex(zl, ZIPLIST_HEAD);
+    if (fptr != NULL) {
+        fptr = ziplistFind(fptr, (unsigned char*)field, sdslen(field), 1);
+        if (fptr != NULL) {
+            /* Grab pointer to the value (fptr points to the field) */
+            vptr = ziplistNext(zl, fptr);
+            serverAssert(vptr != NULL);
+            update = 1;
+
+            /* Delete value */
+            zl = ziplistDelete(zl, &amp;vptr);
+
+            /* Insert new value */
+            zl = ziplistInsert(zl, vptr, (unsigned char*)value,
+                    sdslen(value));
+        }
+    }
+    o-&gt;ptr = zl;
+
+    /* Check if the ziplist needs to be converted to a hash table */
+    if (hashTypeLength(o) &gt; server.hash_max_ziplist_entries)
+        hashTypeConvert(o, OBJ_ENCODING_HT);
+
+...
+</code></pre><p>}</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">首次插入的时候，```ziplistIndex(zl, ZIPLIST_HEAD);```函数会返回NULL</span><br></pre></td></tr></table></figure>
+<p>unsigned char <em>ziplistIndex(unsigned char </em>zl, int index) {<br>    unsigned char *p;<br>    unsigned int prevlensize, prevlen = 0;<br>    if (index &lt; 0) {<br>        index = (-index)-1;<br>        p = ZIPLIST_ENTRY_TAIL(zl);<br>        if (p[0] != ZIP_END) {<br>            ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);<br>            while (prevlen &gt; 0 &amp;&amp; index–) {<br>                p -= prevlen;<br>                ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);<br>            }<br>        }<br>    } else {<br>        p = ZIPLIST_ENTRY_HEAD(zl);<br>        while (p[0] != ZIP_END &amp;&amp; index–) {<br>            p += zipRawEntryLength(p);<br>        }<br>    }<br>    return (p[0] == ZIP_END || index &gt; 0) ? NULL : p;<br>}</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">进而直接调用``ziplistPush``把field和value都插入到ziplist中。再插入过后，还再多了一次判断当前的ziplist的长度是不是大于了``server.hash_max_ziplist_entries``，如果是，就需要转换为hashtable结构存储。</span><br></pre></td></tr></table></figure>
+<p>unsigned char <em>ziplistPush(unsigned char </em>zl, unsigned char <em>s, unsigned int slen, int where) {<br>    unsigned char </em>p;<br>    p = (where == ZIPLIST_HEAD) ? ZIPLIST_ENTRY_HEAD(zl) : ZIPLIST_ENTRY_END(zl);<br>    return __ziplistInsert(zl,p,s,slen);<br>}</p>
+<p>unsigned char <em>__ziplistInsert(unsigned char </em>zl, unsigned char <em>p, unsigned char </em>s, unsigned int slen) {<br>    size_t curlen = intrev32ifbe(ZIPLIST_BYTES(zl)), reqlen;<br>    unsigned int prevlensize, prevlen = 0;<br>    size_t offset;<br>    int nextdiff = 0;<br>    unsigned char encoding = 0;<br>    long long value = 123456789; /<em> initialized to avoid warning. Using a value<br>                                    that is easy to see if for some reason<br>                                    we use it uninitialized. </em>/<br>    zlentry tail;</p>
+<pre><code>/* Find out prevlen for the entry that is inserted. */
+if (p[0] != ZIP_END) {
+    ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
+} else {
+    unsigned char *ptail = ZIPLIST_ENTRY_TAIL(zl);
+    if (ptail[0] != ZIP_END) {
+        prevlen = zipRawEntryLength(ptail);
+    }
+}
+
+/* See if the entry can be encoded */
+if (zipTryEncoding(s,slen,&amp;value,&amp;encoding)) {
+    /* &apos;encoding&apos; is set to the appropriate integer encoding */
+    reqlen = zipIntSize(encoding);
+} else {
+    /* &apos;encoding&apos; is untouched, however zipStoreEntryEncoding will use the
+     * string length to figure out how to encode it. */
+    reqlen = slen;
+}
+/* We need space for both the length of the previous entry and
+ * the length of the payload. */
+reqlen += zipStorePrevEntryLength(NULL,prevlen);
+reqlen += zipStoreEntryEncoding(NULL,encoding,slen);
+
+/* When the insert position is not equal to the tail, we need to
+ * make sure that the next entry can hold this entry&apos;s length in
+ * its prevlen field. */
+int forcelarge = 0;
+nextdiff = (p[0] != ZIP_END) ? zipPrevLenByteDiff(p,reqlen) : 0;
+if (nextdiff == -4 &amp;&amp; reqlen &lt; 4) {
+    nextdiff = 0;
+    forcelarge = 1;
+}
+
+/* Store offset because a realloc may change the address of zl. */
+offset = p-zl;
+zl = ziplistResize(zl,curlen+reqlen+nextdiff);
+p = zl+offset;
+
+/* Apply memory move when necessary and update tail offset. */
+if (p[0] != ZIP_END) {
+    /* Subtract one because of the ZIP_END bytes */
+    memmove(p+reqlen,p-nextdiff,curlen-offset-1+nextdiff);
+
+    /* Encode this entry&apos;s raw length in the next entry. */
+    if (forcelarge)
+        zipStorePrevEntryLengthLarge(p+reqlen,reqlen);
+    else
+        zipStorePrevEntryLength(p+reqlen,reqlen);
+
+    /* Update offset for tail */
+    ZIPLIST_TAIL_OFFSET(zl) =
+        intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+reqlen);
+
+    /* When the tail contains more than one entry, we need to take
+     * &quot;nextdiff&quot; in account as well. Otherwise, a change in the
+     * size of prevlen doesn&apos;t have an effect on the *tail* offset. */
+    zipEntry(p+reqlen, &amp;tail);
+    if (p[reqlen+tail.headersize+tail.len] != ZIP_END) {
+        ZIPLIST_TAIL_OFFSET(zl) =
+            intrev32ifbe(intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl))+nextdiff);
+    }
+} else {
+    /* This element will be the new tail. */
+    ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(p-zl);
+}
+
+/* When nextdiff != 0, the raw length of the next entry has changed, so
+ * we need to cascade the update throughout the ziplist */
+if (nextdiff != 0) {
+    offset = p-zl;
+    zl = __ziplistCascadeUpdate(zl,p+reqlen);
+    p = zl+offset;
+}
+
+/* Write the entry */
+p += zipStorePrevEntryLength(p,prevlen);  
+p += zipStoreEntryEncoding(p,encoding,slen);
+if (ZIP_IS_STR(encoding)) {
+    memcpy(p,s,slen);
+} else {
+    zipSaveInteger(p,value,encoding);
+}
+ZIPLIST_INCR_LENGTH(zl,1);
+return zl;
+</code></pre><p>}</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"></span><br><span class="line">插入的时候可以看出来，redis对于ziplist的存储数据结构也是比较特殊的。一个item项的结构如下：</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">![](https://user-gold-cdn.xitu.io/2018/11/23/1673f84de0b0a0cf?w=531&amp;h=58&amp;f=png&amp;s=7804)</span><br></pre></td></tr></table></figure>
+<p>  p += zipStorePrevEntryLength(p,prevlen);    //计算上一个item项的长度<br>  p += zipStoreEntryEncoding(p,encoding,slen); //计算当前自己需要的编码<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"></span><br><span class="line">其中`prev_entry_length`存储的是上一个item项的长度，这个也是redis比较特殊的地方，在本次更新item的时候采取计算上一个item项的长度。</span><br><span class="line"></span><br><span class="line">encoding是当前这一项的编码方式。ziplist既然是压缩链表，本质上只是是对数字类型的压缩，字符串数字都统一转换为int8, int16, int32, int64 来存储，这样比较节约内存。</span><br><span class="line"></span><br><span class="line">具体的代码实现如下：</span><br></pre></td></tr></table></figure></p>
+<p>  /<em> See if the entry can be encoded </em>/<br>    if (zipTryEncoding(s,slen,&amp;value,&amp;encoding)) {<br>        /<em> ‘encoding’ is set to the appropriate integer encoding </em>/<br>        reqlen = zipIntSize(encoding);<br>    } else {<br>        /* ‘encoding’ is untouched, however zipStoreEntryEncoding will use the</p>
+<pre><code>     * string length to figure out how to encode it. */
+    reqlen = slen;
+}
+</code></pre><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">具体的```zipTryEncoding``` 代码实现：</span><br></pre></td></tr></table></figure>
+<p>/* Check if string pointed to by ‘entry’ can be encoded as an integer.</p>
+<ul>
+<li><p>Stores the integer value in ‘v’ and its encoding in ‘encoding’. <em>/<br>int zipTryEncoding(unsigned char </em>entry, unsigned int entrylen, long long <em>v, unsigned char </em>encoding) {<br> long long value;</p>
+<p> if (entrylen &gt;= 32 || entrylen == 0) return 0;<br> if (string2ll((char*)entry,entrylen,&amp;value)) {</p>
+<pre><code>/* Great, the string can be encoded. Check what&apos;s the smallest
+ * of our encoding types that can hold this value. */
+if (value &gt;= 0 &amp;&amp; value &lt;= 12) {
+    *encoding = ZIP_INT_IMM_MIN+value;
+} else if (value &gt;= INT8_MIN &amp;&amp; value &lt;= INT8_MAX) {
+    *encoding = ZIP_INT_8B;
+} else if (value &gt;= INT16_MIN &amp;&amp; value &lt;= INT16_MAX) {
+    *encoding = ZIP_INT_16B;
+} else if (value &gt;= INT24_MIN &amp;&amp; value &lt;= INT24_MAX) {
+    *encoding = ZIP_INT_24B;
+} else if (value &gt;= INT32_MIN &amp;&amp; value &lt;= INT32_MAX) {
+    *encoding = ZIP_INT_32B;
+} else {
+    *encoding = ZIP_INT_64B;
+}
+*v = value;
+return 1;
+</code></pre><p> }<br> return 0;<br>}</p>
+</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">其中string2ll其实就是一个atoi，但是要实现一个没bug的atoi还是很难的，看看redis的实现，觉得考虑的好全面，负数，越界都考虑清楚，感觉还是很难的。</span><br></pre></td></tr></table></figure>
+<p>/* Convert a string into a long long. Returns 1 if the string could be parsed</p>
+<ul>
+<li>into a (non-overflowing) long long, 0 otherwise. The value will be set to</li>
+<li>the parsed value when appropriate.<br>*</li>
+<li>Note that this function demands that the string strictly represents</li>
+<li>a long long: no spaces or other characters before or after the string</li>
+<li>representing the number are accepted, nor zeroes at the start if not</li>
+<li>for the string “0” representing the zero number.<br>*</li>
+<li>Because of its strictness, it is safe to use this function to check if</li>
+<li>you can convert a string into a long long, and obtain back the string</li>
+<li><p>from the number without any loss in the string representation. <em>/<br>int string2ll(const char </em>s, size_t slen, long long <em>value) {<br> const char </em>p = s;<br> size_t plen = 0;<br> int negative = 0;<br> unsigned long long v;</p>
+<p> /<em> A zero length string is not a valid number. </em>/<br> if (plen == slen)</p>
+<pre><code>return 0;
+</code></pre><p> /<em> Special case: first and only digit is 0. </em>/<br> if (slen == 1 &amp;&amp; p[0] == ‘0’) {</p>
+<pre><code>if (value != NULL) *value = 0;
+return 1;
+</code></pre><p> }</p>
+<p> /* Handle negative numbers: just set a flag and continue like if it</p>
+<ul>
+<li><p>was a positive number. Later convert into negative. */<br>if (p[0] == ‘-‘) {<br> negative = 1;<br> p++; plen++;</p>
+<p> /<em> Abort on only a negative sign. </em>/<br> if (plen == slen)</p>
+<pre><code>return 0;
+</code></pre><p>}</p>
+<p>/<em> First digit should be 1-9, otherwise the string should just be 0. </em>/<br>if (p[0] &gt;= ‘1’ &amp;&amp; p[0] &lt;= ‘9’) {<br> v = p[0]-‘0’;<br> p++; plen++;<br>} else {<br> return 0;<br>}</p>
+<p>/<em> Parse all the other digits, checking for overflow at every step. </em>/<br>while (plen &lt; slen &amp;&amp; p[0] &gt;= ‘0’ &amp;&amp; p[0] &lt;= ‘9’) {<br> if (v &gt; (ULLONG_MAX / 10)) /<em> Overflow. </em>/</p>
+<pre><code>return 0;
+</code></pre><p> v *= 10;</p>
+<p> if (v &gt; (ULLONG_MAX - (p[0]-‘0’))) /<em> Overflow. </em>/</p>
+<pre><code>return 0;
+</code></pre><p> v += p[0]-‘0’;</p>
+<p> p++; plen++;<br>}</p>
+<p>/<em> Return if not all bytes were used. </em>/<br>if (plen &lt; slen)<br> return 0;</p>
+<p>/* Convert to negative if needed, and do the final overflow check when</p>
+</li>
+<li>converting from unsigned long long to long long. <em>/<br>if (negative) {<br> if (v &gt; ((unsigned long long)(-(LLONG_MIN+1))+1)) /</em> Overflow. */<pre><code>return 0;
+</code></pre> if (value != NULL) <em>value = -v;<br>} else {<br> if (v &gt; LLONG_MAX) /</em> Overflow. */<pre><code>return 0;
+</code></pre> if (value != NULL) *value = v;<br>}<br>return 1;<br>}</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">其实每次更新，都会触发内存的realloc，这个地方我感觉其实还是不太好的，如果一次更新n个kv对，就需要调用realloc函数n次，感觉有点浪费啊。</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">## 2.2 OBJ_ENCODING_HT存储方式</span><br><span class="line">从上面的代码可以看出来有两种场景会触发hash obj修改encoding方式，分别如下：</span><br></pre></td></tr></table></figure>
+<p>hash-max-ziplist-entries 512<br>hash-max-ziplist-value 64<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">当ziplist的entry个数小于512的时候， 还有一种场景是entry的值长度小于64的时候。当然这其实是redis的一个配置项。</span><br><span class="line"></span><br><span class="line">那么hash table存储又是什么样的结构呢？看下面的代码：</span><br></pre></td></tr></table></figure></p>
+<p>void hashTypeConvertZiplist(robj *o, int enc) {<br>    serverAssert(o-&gt;encoding == OBJ_ENCODING_ZIPLIST);</p>
+<pre><code>if (enc == OBJ_ENCODING_ZIPLIST) {
+    /* Nothing to do... */
+
+} else if (enc == OBJ_ENCODING_HT) {
+    hashTypeIterator *hi;
+    dict *dict;
+    int ret;
+
+    hi = hashTypeInitIterator(o);
+    dict = dictCreate(&amp;hashDictType, NULL);
+
+    while (hashTypeNext(hi) != C_ERR) {
+        sds key, value;
+
+        key = hashTypeCurrentObjectNewSds(hi,OBJ_HASH_KEY);
+        value = hashTypeCurrentObjectNewSds(hi,OBJ_HASH_VALUE);
+        ret = dictAdd(dict, key, value);
+        if (ret != DICT_OK) {
+            serverLogHexDump(LL_WARNING,&quot;ziplist with dup elements dump&quot;,
+                o-&gt;ptr,ziplistBlobLen(o-&gt;ptr));
+            serverPanic(&quot;Ziplist corruption detected&quot;);
+        }
+    }
+    hashTypeReleaseIterator(hi);
+    zfree(o-&gt;ptr);
+    o-&gt;encoding = OBJ_ENCODING_HT;
+    o-&gt;ptr = dict;
+} else {
+    serverPanic(&quot;Unknown hash encoding&quot;);
+}
+</code></pre><p>}</p>
+<p><code>`</code><br>可以看出会创建一个迭代器，遍历当前的ziplist结构，然后放到新创建的dict结构中。</p>
+<p>关于dict的结构，可以参看之前我的一篇<a href="https://juejin.im/post/5bf27463f265da6120616d9c" target="_blank" rel="noopener">dict的数据结构分析</a>。</p>
+<h2 id="3-总结"><a href="#3-总结" class="headerlink" title="3. 总结"></a>3. 总结</h2><p>hash对象的存储如果使用的编码是ZipList的时候，感觉效率是不高的，平均复杂度是<code>O(n)</code>,如果涉及到内存的连锁移动的话，最差的事件复杂度其实是<code>o(n^2)</code>。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://yoursite.com/2019/01/02/redis个人源码分析笔记4(hash对象的存储)/" data-id="cjqesjddf00001wkp1kuvxzwy" class="article-share-link">Share</a>
+      
+      
+  <ul class="article-tag-list"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/redis/">redis</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2019/01/02/redis个人源码分析笔记1(hyperloglog+golang实现)/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          redis个人源码分析笔记1----hyperloglog（golang实现）
+        
+      </div>
+    </a>
+  
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Categories</h3>
+    <div class="widget">
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/redis源码分析笔记/">redis源码分析笔记</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list"><li class="tag-list-item"><a class="tag-list-link" href="/tags/redis/">redis</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tag Cloud</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/redis/" style="font-size: 10px;">redis</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">January 2019</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/">redis个人源码分析笔记2(dict的实现原理)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/">redis个人源码分析笔记3(redis的事件驱动源码分析)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/">redis个人源码分析笔记5(RDB持久化机制)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记1(hyperloglog+golang实现)/">redis个人源码分析笔记1----hyperloglog（golang实现）</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记4(hash对象的存储)/">redis个人源码分析笔记4(hash对象的存储)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 Lin-Hao<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
