@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>Lh的博客</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="1 基数统计HLL算法用来进行基数统计。 什么是基数统计：例如给你一个数组[1,2,2,3,3,5,5] ,这个数组的基数是4（一共有4个不重复的元素）。 好了现在知道什么是基数统计了。对于这个问题，最容易想到的办法当然是使用bitmap来实现，每个bit位表示一个数字是否出现过，比如要表示上面这串数字使用下面的bitmap来表示：  011101  优点：相对省空间，且合并操作简单，比如上面的应">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Lh的博客">
+<meta property="og:url" content="http://yoursite.com/2019/01/02/redis个人源码分析笔记1(hpyerloglog原理）/index.html">
+<meta property="og:site_name" content="Lh的博客">
+<meta property="og:description" content="1 基数统计HLL算法用来进行基数统计。 什么是基数统计：例如给你一个数组[1,2,2,3,3,5,5] ,这个数组的基数是4（一共有4个不重复的元素）。 好了现在知道什么是基数统计了。对于这个问题，最容易想到的办法当然是使用bitmap来实现，每个bit位表示一个数字是否出现过，比如要表示上面这串数字使用下面的bitmap来表示：  011101  优点：相对省空间，且合并操作简单，比如上面的应">
+<meta property="og:locale" content="default">
+<meta property="og:updated_time" content="2019-01-02T05:43:13.405Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Lh的博客">
+<meta name="twitter:description" content="1 基数统计HLL算法用来进行基数统计。 什么是基数统计：例如给你一个数组[1,2,2,3,3,5,5] ,这个数组的基数是4（一共有4个不重复的元素）。 好了现在知道什么是基数统计了。对于这个问题，最容易想到的办法当然是使用bitmap来实现，每个bit位表示一个数字是否出现过，比如要表示上面这串数字使用下面的bitmap来表示：  011101  优点：相对省空间，且合并操作简单，比如上面的应">
+  
+    <link rel="alternate" href="/atom.xml" title="Lh的博客" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Lh的博客</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">努力学习吧，骚年</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="http://yoursite.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-redis个人源码分析笔记1(hpyerloglog原理）" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/01/02/redis个人源码分析笔记1(hpyerloglog原理）/" class="article-date">
+  <time datetime="2019-01-02T05:42:42.881Z" itemprop="datePublished">2019-01-02</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h2 id="1-基数统计"><a href="#1-基数统计" class="headerlink" title="1 基数统计"></a>1 基数统计</h2><p>HLL算法用来进行基数统计。</p>
+<p>什么是基数统计：例如给你一个数组[1,2,2,3,3,5,5] ,这个数组的基数是4（一共有4个不重复的元素）。 好了现在知道什么是基数统计了。<br>对于这个问题，最容易想到的办法当然是使用bitmap来实现，每个bit位表示一个数字是否出现过，比如要表示上面这串数字使用下面的bitmap来表示：</p>
+<blockquote>
+<p>011101</p>
+</blockquote>
+<p><strong>优点</strong>：相对省空间，且合并操作简单，比如上面的应用场景1， 如果想统计<strong>某2天</strong>有多少个ip地址访问，只需要把两天的bitmap结构拿出来做“或”操作即可。<br><strong>缺点</strong>： 空间复杂度还是太大，1个byte只有8个bit，也就是1个byte只能唯一表示8个IP地址（8个不同的客户）那么：<br>1k才能表示 1024 <em> 8 = 8192<br>1M才能表示 1024 </em> 1024 * 8 = 8388608 （约800多万）<br>如果商品链接很多，还需要统计每天的数据等等，每个商品每天的链接需要1M以上的内存，太大，内存扛不住。</p>
+<p>相反： 使用HLL ，对于精度要求不是特别高的时候，只需要12k的内存，很神奇！！！</p>
+<h2 id="2-HLL算法的原理"><a href="#2-HLL算法的原理" class="headerlink" title="2 HLL算法的原理"></a>2 HLL算法的原理</h2><p>举一个我们最熟悉的抛硬币例子，出现正反面的概率都是1/2，一直抛硬币直到出现正面，记录下投掷次数k，将这种抛硬币多次直到出现正面的过程记为一次伯努利过程，对于n次伯努利过程，我们会得到n个出现正面的投掷次数值 <figure class="highlight plain"><figcaption><span>k_1, k_2 ... k_n $```, 其中这里的最大值是```k_max```。   </span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">看到这里可能有点懵逼，我们把问题缕一缕，联系我们的问题，在做基数统计的时候，其实是这么个问题：  </span><br><span class="line">&gt;现在的目标是来了一组投掷次数的数据(```$ k_1, k_2 ... k_n $```)，想要预测出，一共做了多少次伯努利过程(假设为n)，才能得到这样的数据的啊？  </span><br><span class="line"></span><br><span class="line">根据一顿数学推导---直接给结论： 用 ```$2^&#123;k_ max&#125;$ ``` 来作为n的估计值。</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">![image](https://user-gold-cdn.xitu.io/2018/11/17/1671ffb131e402c2?w=506&amp;h=319&amp;f=png&amp;s=18487)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">&gt;例如：做了一组伯努利过程，发现连续出现5次反面后，出现了1次正面，请问出现这种情况，大概需要做多少次伯努利过程呢？</span><br><span class="line">答案是：   ``` $ 2^6  = 64 $``` 次实验。</span><br><span class="line"></span><br><span class="line">这个其实就是我们进行HLL基数统计的基础。</span><br><span class="line"></span><br><span class="line">回到基数统计的问题，我们需要统计一组数据中不重复元素的个数，集合中每个元素的经过hash函数后可以表示成0和1构成的二进制数串，一个二进制串可以类比为一次抛硬币实验，1是抛到正面，0是反面。二进制串中从低位开始第一个1出现的位置可以理解为抛硬币试验中第一次出现正面的抛掷次数kk，那么基于上面的结论，我们可以通过多次抛硬币实验的最大抛到正面的次数来预估总共进行了多少次实验，同样可以可以通过第一个1出现位置的最大值``` $ k_&#123;max&#125;k</span><br><span class="line">​max</span><br></pre></td></tr></table></figure></p>
+<p>​​ 来预估总共有多少个不同的数字（整体基数）。</p>
+<p>所以HLL的基本思想是利用集合中数字的比特串第一个1出现位置的最大值来预估整体基数，但是这种预估方法存在较大误差，为了改善误差情况，HLL中引入分桶平均的概念。  </p>
+<blockquote>
+<p>例如 同样举抛硬币的例子，如果只有一组抛硬币实验，运气较好，第一次实验过程就抛了10次才第一次抛到正面，显然根据公式推导得到的实验次数的估计误差较大；如果100个组同时进行抛硬币实验，同时运气这么好的概率就很低了，每组分别进行多次抛硬币实验，并上报各自实验过程中抛到正面的抛掷次数的最大值，就能根据100组的平均值预估整体的实验次数了。</p>
+</blockquote>
+<p>redis里面就是使用了分桶的原理，具体的实现原理如下：<br>首先来了一个redis object（字符串）， 经过hash后，生成了一个8字节的hash值。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">graph LR</span><br><span class="line">A[redis object]--&gt;|hash function| B(64 bit)</span><br></pre></td></tr></table></figure>
+<p>然后将 64个bit位的前14位作为桶的下标，这样桶大小就是<figure class="highlight plain"><figcaption><span>2^&#123;14&#125; </span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">后面50个bit位，相当于是随机的那个伯努利过程，我们找到1第一次出现的位置count，如果当前count比桶里面的oldcount大， 则更新oldcount=count。</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">## 1.2 基数统计的应用场景</span><br><span class="line">- 1. 统计一个网站一天有多少个ip地址访问；</span><br><span class="line">- 2. 统计某个商品链接每天被多少个不同客户访问；</span><br><span class="line">- ...</span><br><span class="line"></span><br><span class="line">还有很多应用，大致就是统计类的需求其实都很明确， 不需要很准确的值，只需要一个类似的估计值即可，同时不用set来存储，因为set其实很消耗内存，希望这个统计的结构越节约内存越好。</span><br><span class="line">其实都可以用这HLL算法，节约内存。</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">## 1.4 HyperLogLog的算法流程  </span><br><span class="line">### 1.4.1 创建一个HLL对象</span><br><span class="line">HLL的头结构体定义：</span><br></pre></td></tr></table></figure></p>
+<p>struct hllhdr {<br>    char magic[4];      /<em> “HYLL” 魔数，前面4个字节表示这是一个hll对象</em>/<br>    uint8_t encoding;   /<em> 存储方式，后面会讲到，分为HLL_DENSE or HLL_SPARSE两种存储方式 </em>/<br>    uint8_t notused[3]; /<em>保留字段，因为redis是自然字节对齐的，所以空着也是空着，不如定义一下 Reserved for future use, must be zero. </em>/<br>    uint8_t card[8];    /<em>缓存的当前hll对象的基数值 Cached cardinality, little endian. </em>/<br>    uint8_t registers[]; /<em> Data bytes. 对于dense存储方式，这里就是一个12k的连续数组，对于sparse存储方式，这里长度是不定的，后面会讲到</em>/<br>};</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">创建一个hll对象：</span><br></pre></td></tr></table></figure>
+<p>/* Create an HLL object. We always create the HLL using sparse encoding.</p>
+<ul>
+<li><p>This will be upgraded to the dense representation as needed.<br>这里英文注释其实已经写的很清楚了，默认hll对象使用sparse的编码方式，这样比较节约内存，但是sparse方式存储其实比较难以理解，代码实现也比较复杂，但是对于理解来说，其实就是对于里面hll桶的存储方式的不同，HLL算法本身逻辑上没有区别<br><em>/<br>robj </em>createHLLObject(void) {<br> robj <em>o;<br> struct hllhdr </em>hdr;<br> sds s;<br> uint8_t *p;<br> int sparselen = HLL_HDR_SIZE +</p>
+<pre><code>(((HLL_REGISTERS+(HLL_SPARSE_XZERO_MAX_LEN-1)) /
+ HLL_SPARSE_XZERO_MAX_LEN)*2);  
+</code></pre><p> //头长度+(16384 + (16384-1) / 16384 * 2)，也就是2个字节，默认因为基数统计里面所有的桶都是0，用spase方式存储，只需要2个字节<br> int aux;</p>
+<p> /* Populate the sparse representation with as many XZERO opcodes as</p>
+<ul>
+<li><p>needed to represent all the registers. <em>/<br>aux = HLL_REGISTERS;<br>s = sdsnewlen(NULL,sparselen);<br>p = (uint8_t</em>)s + HLL_HDR_SIZE;<br>while(aux) {<br> int xzero = HLL_SPARSE_XZERO_MAX_LEN;<br> if (xzero &gt; aux) xzero = aux;<br> HLL_SPARSE_XZERO_SET(p,xzero);<br> p += 2;<br> aux -= xzero;<br>}<br>serverAssert((p-(uint8_t*)s) == sparselen);</p>
+<p>/<em> Create the actual object. </em>/<br>o = createObject(OBJ_STRING,s);<br>hdr = o-&gt;ptr;<br>memcpy(hdr-&gt;magic,”HYLL”,4);<br>hdr-&gt;encoding = HLL_SPARSE;<br>return o;<br>}</p>
+</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">### 3 pfadd 流程</span><br><span class="line">![image](https://user-gold-cdn.xitu.io/2018/11/17/1671ffb12da8d593?w=1200&amp;h=500&amp;f=jpeg&amp;s=26953)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">#### 3.1 使用dense方式存储   </span><br><span class="line">   来一个byte流，传入 是一个void * 指针和一个长度len,</span><br><span class="line">通过```MurmurHash64A``` 函数 计算一个64位的hash值。64位的前14位（这个值是可以修改的）作为index，后面作为50位作为bit流。</span><br><span class="line">2 ^ 14 == 16384 也就是一共有16384个桶。每个桶使用6个bit存储。</span><br><span class="line"></span><br><span class="line">后面的50位bit流，如下样子：   </span><br><span class="line">```00001000....11000</span><br></pre></td></tr></table></figure>
+<p>其中第一次出现1的位置我们记为count， 所以count最大值是50， 用6个bit位就够表示了。<br>2 ^ 6 = 64</p>
+<p>故一个HLL对象实际用来存储的空间是16384(个桶） * (<br>每个桶6个bit) / 8 = 12288 byte。 也就是使用了约12k的内存。这个其实redis比较牛逼的地方，其实用一个字节来存的话，其实也就是16k的内存，但是为了能省4k的内存，搞出一堆。这个只是dense方式存储，相对是浪费空间的，下面讲的sparse方式存储更加节约空间。</p>
+<p>计算出index(桶的下标), count(后面50个bit中第一次出现1的位置)后，下一步就是更新桶的操作。<br>根据index找到桶，然后看当前的count 是否大于oldcount，大于则更新下oldcount = count。此时为了性能考虑，是不会去统计当前的基数的，而是将HLL的头里面的一个标志位置为1，表示下次进行pfcount操作的时候，当前的缓存值已经失效了，需要重新统计缓存值。在后面pfcount流程的时候，发现这个标记为失效，就会去重新统计新的基数，放入基数缓存。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line">/* Call hllDenseAdd() or hllSparseAdd() according to the HLL encoding. */</span><br><span class="line">int hllAdd(robj *o, unsigned char *ele, size_t elesize) &#123;</span><br><span class="line">    struct hllhdr *hdr = o-&gt;ptr;</span><br><span class="line">    switch(hdr-&gt;encoding) &#123;</span><br><span class="line">    case HLL_DENSE: return hllDenseAdd(hdr-&gt;registers,ele,elesize);</span><br><span class="line">    case HLL_SPARSE: return hllSparseAdd(o,ele,elesize);//sparse</span><br><span class="line">    default: return -1; /* Invalid representation. */</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">/* &quot;Add&quot; the element in the dense hyperloglog data structure.</span><br><span class="line"> * Actually nothing is added, but the max 0 pattern counter of the subset</span><br><span class="line"> * the element belongs to is incremented if needed.</span><br><span class="line"> *</span><br><span class="line"> * This is just a wrapper to hllDenseSet(), performing the hashing of the</span><br><span class="line"> * element in order to retrieve the index and zero-run count. */</span><br><span class="line">int hllDenseAdd(uint8_t *registers, unsigned char *ele, size_t elesize) &#123;</span><br><span class="line">    long index;</span><br><span class="line">    uint8_t count = hllPatLen(ele,elesize,&amp;index);//index就是桶的下标， count则是后面50个bit位中1第一次出现的位置</span><br><span class="line">    /* Update the register if this element produced a longer run of zeroes. */</span><br><span class="line">    return hllDenseSet(registers,index,count);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">/* ================== Dense representation implementation  ================== */</span><br><span class="line"></span><br><span class="line">/* Low level function to set the dense HLL register at &apos;index&apos; to the</span><br><span class="line"> * specified value if the current value is smaller than &apos;count&apos;.</span><br><span class="line"> *</span><br><span class="line"> * &apos;registers&apos; is expected to have room for HLL_REGISTERS plus an</span><br><span class="line"> * additional byte on the right. This requirement is met by sds strings</span><br><span class="line"> * automatically since they are implicitly null terminated.</span><br><span class="line"> *</span><br><span class="line"> * The function always succeed, however if as a result of the operation</span><br><span class="line"> * the approximated cardinality changed, 1 is returned. Otherwise 0</span><br><span class="line"> * is returned. */</span><br><span class="line">int hllDenseSet(uint8_t *registers, long index, uint8_t count) &#123;</span><br><span class="line">    uint8_t oldcount;</span><br><span class="line">    //找到对应的index获取其中的值</span><br><span class="line">    HLL_DENSE_GET_REGISTER(oldcount,registers,index);</span><br><span class="line">    if (count &gt; oldcount) &#123; //如果新的值比老的大，就更新来的</span><br><span class="line">        HLL_DENSE_SET_REGISTER(registers,index,count);</span><br><span class="line">        return 1;</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        return 0;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">/* Given a string element to add to the HyperLogLog, returns the length</span><br><span class="line"> * of the pattern 000..1 of the element hash. As a side effect &apos;regp&apos; is</span><br><span class="line"> * set to the register index this element hashes to. */</span><br><span class="line">int hllPatLen(unsigned char *ele, size_t elesize, long *regp) &#123;</span><br><span class="line">    uint64_t hash, bit, index;</span><br><span class="line">    int count;</span><br><span class="line"></span><br><span class="line">    /* Count the number of zeroes starting from bit HLL_REGISTERS</span><br><span class="line">     * (that is a power of two corresponding to the first bit we don&apos;t use</span><br><span class="line">     * as index). The max run can be 64-P+1 = Q+1 bits.</span><br><span class="line">     *</span><br><span class="line">     * Note that the final &quot;1&quot; ending the sequence of zeroes must be</span><br><span class="line">     * included in the count, so if we find &quot;001&quot; the count is 3, and</span><br><span class="line">     * the smallest count possible is no zeroes at all, just a 1 bit</span><br><span class="line">     * at the first position, that is a count of 1.</span><br><span class="line">     *</span><br><span class="line">     * This may sound like inefficient, but actually in the average case</span><br><span class="line">     * there are high probabilities to find a 1 after a few iterations. */</span><br><span class="line">    hash = MurmurHash64A(ele,elesize,0xadc83b19ULL);</span><br><span class="line">    index = hash &amp; HLL_P_MASK; /* Register index. */</span><br><span class="line">    hash &gt;&gt;= HLL_P; /* Remove bits used to address the register. */</span><br><span class="line">    hash |= ((uint64_t)1&lt;&lt;HLL_Q); /* Make sure the loop terminates</span><br><span class="line">                                     and count will be &lt;= Q+1. */</span><br><span class="line">    bit = 1;</span><br><span class="line">    count = 1; /* Initialized to 1 since we count the &quot;00000...1&quot; pattern. */</span><br><span class="line">    while((hash &amp; bit) == 0) &#123;</span><br><span class="line">        count++;</span><br><span class="line">        bit &lt;&lt;= 1;</span><br><span class="line">    &#125;</span><br><span class="line">    *regp = (int) index;</span><br><span class="line"></span><br><span class="line">    serverLog(LL_NOTICE,&quot;pf hash idx=%d, count=%d&quot;, index, count);</span><br><span class="line">    return count;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="3-2-pfcount流程"><a href="#3-2-pfcount流程" class="headerlink" title="3.2 pfcount流程"></a>3.2 pfcount流程</h3><p>统计基数流程，就如果cache标志位是有效的，直接返回缓存值，否则重新计算HLL的所有16384个桶，然后进行统计修正，具体的修正的原理，涉及很多的数学知识和论文，这里就不提及了。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line">/* Return the approximated cardinality of the set based on the harmonic</span><br><span class="line"> * mean of the registers values. &apos;hdr&apos; points to the start of the SDS</span><br><span class="line"> * representing the String object holding the HLL representation.</span><br><span class="line"> *</span><br><span class="line"> * If the sparse representation of the HLL object is not valid, the integer</span><br><span class="line"> * pointed by &apos;invalid&apos; is set to non-zero, otherwise it is left untouched.</span><br><span class="line"> *</span><br><span class="line"> * hllCount() supports a special internal-only encoding of HLL_RAW, that</span><br><span class="line"> * is, hdr-&gt;registers will point to an uint8_t array of HLL_REGISTERS element.</span><br><span class="line"> * This is useful in order to speedup PFCOUNT when called against multiple</span><br><span class="line"> * keys (no need to work with 6-bit integers encoding). */</span><br><span class="line">uint64_t hllCount(struct hllhdr *hdr, int *invalid) &#123;</span><br><span class="line">    double m = HLL_REGISTERS;</span><br><span class="line">    double E;</span><br><span class="line">    int j;</span><br><span class="line">    int reghisto[HLL_Q+2] = &#123;0&#125;;</span><br><span class="line"></span><br><span class="line">    /* Compute register histogram */</span><br><span class="line">    if (hdr-&gt;encoding == HLL_DENSE) &#123;</span><br><span class="line">        hllDenseRegHisto(hdr-&gt;registers,reghisto);</span><br><span class="line">    &#125; else if (hdr-&gt;encoding == HLL_SPARSE) &#123;</span><br><span class="line">        hllSparseRegHisto(hdr-&gt;registers,</span><br><span class="line">                         sdslen((sds)hdr)-HLL_HDR_SIZE,invalid,reghisto);</span><br><span class="line">    &#125; else if (hdr-&gt;encoding == HLL_RAW) &#123;</span><br><span class="line">        hllRawRegHisto(hdr-&gt;registers,reghisto);</span><br><span class="line">    &#125; else &#123;</span><br><span class="line">        serverPanic(&quot;Unknown HyperLogLog encoding in hllCount()&quot;);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    /* Estimate cardinality form register histogram. See:</span><br><span class="line">     * &quot;New cardinality estimation algorithms for HyperLogLog sketches&quot;</span><br><span class="line">     * Otmar Ertl, arXiv:1702.01284 */</span><br><span class="line">    //这里具体的修正流程，要去看论文，就照着抄过来实现就可以了。 </span><br><span class="line">    double z = m * hllTau((m-reghisto[HLL_Q+1])/(double)m);</span><br><span class="line">    for (j = HLL_Q; j &gt;= 1; --j) &#123;</span><br><span class="line">        z += reghisto[j];</span><br><span class="line">        z *= 0.5;</span><br><span class="line">    &#125;</span><br><span class="line">    z += m * hllSigma(reghisto[0]/(double)m);</span><br><span class="line">    E = llroundl(HLL_ALPHA_INF*m*m/z);</span><br><span class="line"></span><br><span class="line">    return (uint64_t) E;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="4-后记"><a href="#4-后记" class="headerlink" title="4. 后记"></a>4. 后记</h2><p>其实原理是很简单的，而且里面涉及到很多的数学知识，也是不能全部看懂，不得不感慨，redis对内存的节约是真的很变态的。对于sparse模式，节约的内存更加恐怖，因为这个其实对于hll算法的原理理解其实影响不大，本文就不做详细介绍了。</p>
+<p>最后贴上我用golang模仿写的一个hyperloglog代码：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br></pre></td><td class="code"><pre><span class="line">package goRedis</span><br><span class="line"></span><br><span class="line">import (</span><br><span class="line">	&quot;bytes&quot;</span><br><span class="line">	&quot;encoding/binary&quot;</span><br><span class="line">	&quot;fmt&quot;</span><br><span class="line">	&quot;math&quot;</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line">const seed = 0xadc83b19</span><br><span class="line"></span><br><span class="line">const hll_dense = 1</span><br><span class="line">const hll_sparse = 2</span><br><span class="line"></span><br><span class="line">const hll_p = 14</span><br><span class="line">const hll_q = 64 - hll_p</span><br><span class="line">const hll_registers = 1 &lt;&lt; hll_p</span><br><span class="line">const hll_p_mask = hll_registers - 1</span><br><span class="line">const hll_bits = 6</span><br><span class="line">const hll_sparse_val_max_value = 32</span><br><span class="line">const hll_alpha_inf = 0.721347520444481703680</span><br><span class="line"></span><br><span class="line">type hllhdr struct &#123;</span><br><span class="line">	magic      string</span><br><span class="line">	encoding   uint8</span><br><span class="line">	notused    [3]uint8</span><br><span class="line">	card       [8]uint64</span><br><span class="line">	registers  []byte //实际存储的，因为后面如果encoding方式采用sparse的话，长度会变化，所以使用slice比较好</span><br><span class="line">	vaildCache bool</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func initHLL(encoding uint8) *hllhdr &#123;</span><br><span class="line">	hdr := new(hllhdr)</span><br><span class="line">	hdr.magic = &quot;HYLL&quot;</span><br><span class="line">	hdr.encoding = encoding</span><br><span class="line"></span><br><span class="line">	if encoding == hll_dense &#123;</span><br><span class="line">		hdr.registers = make([]byte, hll_registers*1) // 先简单实现下 用一个字节存6个bit</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		panic(&quot;HLL SPARSE encoding format doesn&apos;t support.&quot;)</span><br><span class="line">	&#125;</span><br><span class="line">	return hdr</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func hllDenseSet(hllObj *hllhdr, index uint64, count int) bool &#123;</span><br><span class="line">	if count &gt; int(hllObj.registers[index]) &#123;</span><br><span class="line">		hllObj.registers[index] = byte(count)</span><br><span class="line">		return true</span><br><span class="line">	&#125;</span><br><span class="line">	return false</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func PfAddCommand(hllObj *hllhdr, val []byte) &#123;</span><br><span class="line">	index, count := hllPartLen(val)</span><br><span class="line">	if hllObj.encoding == hll_dense &#123;</span><br><span class="line">		hllDenseSet(hllObj, index, count)</span><br><span class="line">		hllObj.vaildCache = false</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		panic(&quot;HLL SPARSE encoding format doesn&apos;t support.&quot;)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func hllTau(x float64) float64 &#123;</span><br><span class="line">	if x == 0. || x == 1. &#123;</span><br><span class="line">		return 0.</span><br><span class="line">	&#125;</span><br><span class="line">	var zPrime float64</span><br><span class="line">	y := 1.0</span><br><span class="line">	z := 1 - x</span><br><span class="line">	for &#123;</span><br><span class="line">		x = math.Sqrt(x)</span><br><span class="line">		zPrime = z</span><br><span class="line">		y *= 0.5</span><br><span class="line">		z -= math.Pow(1-x, 2) * y</span><br><span class="line">		if zPrime == z &#123;</span><br><span class="line">			break</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	return z / 3</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func hllDenseRegHisto(hllObj *hllhdr, reghisto *[hll_q + 2]int) &#123;</span><br><span class="line">	for i := 0; i &lt; hll_registers; i++ &#123;</span><br><span class="line">		reg := hllObj.registers[i]</span><br><span class="line">		reghisto[reg]++</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func hllSigma(x float64) float64 &#123;</span><br><span class="line">	if x == 1. &#123;</span><br><span class="line">		return math.MaxInt64</span><br><span class="line">	&#125;</span><br><span class="line">	var zPrime float64</span><br><span class="line">	y := float64(1)</span><br><span class="line">	z := x</span><br><span class="line">	for &#123;</span><br><span class="line">		x *= x</span><br><span class="line">		zPrime = z</span><br><span class="line">		z += x * y</span><br><span class="line">		y += y</span><br><span class="line">		if zPrime == z &#123;</span><br><span class="line">			break</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	return z</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func hllCount(hllObj *hllhdr) int &#123;</span><br><span class="line">	m := float64(hll_registers)</span><br><span class="line">	var reghisto [hll_q + 2]int</span><br><span class="line">	if hllObj.encoding == hll_dense &#123;</span><br><span class="line">		hllDenseRegHisto(hllObj, &amp;reghisto)</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		panic(&quot;impliment me..&quot;)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	z := m * hllTau((m - (float64(reghisto[hll_q+1]))/m))</span><br><span class="line">	for j := hll_q; j &gt;= 1; j-- &#123;</span><br><span class="line">		z += float64(reghisto[j])</span><br><span class="line">		z *= 0.5</span><br><span class="line">	&#125;</span><br><span class="line">	z += m * hllSigma(float64(reghisto[0])/m)</span><br><span class="line">	E := math.Round(hll_alpha_inf * m * m / z)</span><br><span class="line"></span><br><span class="line">	return int(E)</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func PfCountCommand(hllObj *hllhdr) int &#123;</span><br><span class="line">	var ret int</span><br><span class="line">	if hllObj.vaildCache &#123;</span><br><span class="line">		return 0</span><br><span class="line">	&#125; else &#123;</span><br><span class="line">		ret = hllCount(hllObj)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	return ret</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func CreateHLLObject() *hllhdr &#123;</span><br><span class="line">	hdr := initHLL(hll_dense)</span><br><span class="line">	return hdr</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func Murmurhash(buff []byte, seed uint32) uint64 &#123;</span><br><span class="line">	buffLen := uint64(len(buff))</span><br><span class="line">	m := uint64(0xc6a4a7935bd1e995)</span><br><span class="line">	r := uint32(47)</span><br><span class="line">	h := uint64(seed) ^ (buffLen * m)</span><br><span class="line"></span><br><span class="line">	for i := uint64(0); i &lt; buffLen-(buffLen&amp;7); &#123;</span><br><span class="line">		var k uint64</span><br><span class="line">		bBuffer := bytes.NewBuffer(buff[i : i+8])</span><br><span class="line">		binary.Read(bBuffer, binary.LittleEndian, &amp;k)</span><br><span class="line"></span><br><span class="line">		k *= m</span><br><span class="line">		k ^= k &gt;&gt; r</span><br><span class="line">		k *= m</span><br><span class="line">		h ^= k</span><br><span class="line">		h *= m</span><br><span class="line"></span><br><span class="line">		binary.Write(bBuffer, binary.LittleEndian, &amp;k)</span><br><span class="line">		i += 8</span><br><span class="line">	&#125;</span><br><span class="line">	switch buffLen &amp; 7 &#123;</span><br><span class="line">	case 7:</span><br><span class="line">		h ^= uint64(buff[6]) &lt;&lt; 48</span><br><span class="line">		fallthrough</span><br><span class="line">	case 6:</span><br><span class="line">		h ^= uint64(buff[5]) &lt;&lt; 40</span><br><span class="line">		fallthrough</span><br><span class="line">	case 5:</span><br><span class="line">		h ^= uint64(buff[4]) &lt;&lt; 32</span><br><span class="line">		fallthrough</span><br><span class="line">	case 4:</span><br><span class="line">		h ^= uint64(buff[3]) &lt;&lt; 24</span><br><span class="line">		fallthrough</span><br><span class="line">	case 3:</span><br><span class="line">		h ^= uint64(buff[2]) &lt;&lt; 16</span><br><span class="line">		fallthrough</span><br><span class="line">	case 2:</span><br><span class="line">		h ^= uint64(buff[1]) &lt;&lt; 8</span><br><span class="line">		fallthrough</span><br><span class="line">	case 1:</span><br><span class="line">		h ^= uint64(buff[0])</span><br><span class="line">		fallthrough</span><br><span class="line">	default:</span><br><span class="line">		h *= m</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	h ^= h &gt;&gt; r</span><br><span class="line">	h *= m</span><br><span class="line">	h ^= h &gt;&gt; r</span><br><span class="line">	return h</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">func hllPartLen(buff []byte) (index uint64, count int) &#123;</span><br><span class="line">	hash := Murmurhash(buff, seed)</span><br><span class="line">	index = hash &amp; uint64(hll_p_mask) //这里就是取出后14个bit，作为index</span><br><span class="line">	hash &gt;&gt;= hll_p                    //右移把后面14个bit清理掉,注意这里的bit流其实是倒序的</span><br><span class="line">	hash |= uint64(1) &lt;&lt; hll_q        //当前的最高位设置1，其实是一个哨兵，避免count为0</span><br><span class="line">	bit := uint64(1)</span><br><span class="line">	count = 1</span><br><span class="line">	for (hash &amp; bit) == 0 &#123;</span><br><span class="line">		count++</span><br><span class="line">		bit &lt;&lt;= 1</span><br><span class="line">	&#125;</span><br><span class="line">	fmt.Printf(&quot;pf hash idx=%d, count=%d\n&quot;, index, count)</span><br><span class="line"></span><br><span class="line">	return index, count</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">//func hllSparseSet(o, index int64, count int64) &#123;</span><br><span class="line">//	if count &gt; hll_sparse_val_max_value &#123;</span><br><span class="line">//		goto promote</span><br><span class="line">//	&#125;</span><br><span class="line">//</span><br><span class="line">//promote:</span><br><span class="line">//&#125;</span><br></pre></td></tr></table></figure></p>
+<p>测试代码：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">func TestAll(t *testing.T) &#123;</span><br><span class="line">	hllObj := CreateHLLObject()</span><br><span class="line">	test1 := []string&#123;&quot;apple&quot;, &quot;apple&quot;, &quot;orange&quot;, &quot;ttt&quot;, &quot;aaa&quot;&#125;</span><br><span class="line"></span><br><span class="line">	for _, str := range test1 &#123;</span><br><span class="line">		PfAddCommand(hllObj, []byte(str))</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	println(PfCountCommand(hllObj))</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://yoursite.com/2019/01/02/redis个人源码分析笔记1(hpyerloglog原理）/" data-id="cjqerm09m000168kpfhmf6djy" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          (no title)
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2019/01/02/hello-world/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">Hello World</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">January 2019</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记1(hpyerloglog原理）/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/hello-world/">Hello World</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 Lin-Hao<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>

@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="generator" content="Hexo 3.8.0">
+  <meta charset="utf-8">
+  
+
+  
+  <title>Lh的博客</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="redis的事件驱动redis性能很好，而且是一个单线程的框架。得益于redis主要通过异步IO， 多路复用的技术，使用反应堆（reactor）模式，把大量的io操作通过消息驱动的方式单线程一条条处理，这样可以很好的利用CPU资源。因为没有同步调用，所以处理速度非常快。使得多个Client访问redis-server时候，并发性能很高。那么具体redis是如何实现的呢？ 1 redis的多路复用技">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Lh的博客">
+<meta property="og:url" content="http://yoursite.com/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/index.html">
+<meta property="og:site_name" content="Lh的博客">
+<meta property="og:description" content="redis的事件驱动redis性能很好，而且是一个单线程的框架。得益于redis主要通过异步IO， 多路复用的技术，使用反应堆（reactor）模式，把大量的io操作通过消息驱动的方式单线程一条条处理，这样可以很好的利用CPU资源。因为没有同步调用，所以处理速度非常快。使得多个Client访问redis-server时候，并发性能很高。那么具体redis是如何实现的呢？ 1 redis的多路复用技">
+<meta property="og:locale" content="default">
+<meta property="og:image" content="https://user-gold-cdn.xitu.io/2018/11/21/16734a2bd384a15e?w=513&h=303&f=png&s=31507">
+<meta property="og:image" content="https://user-gold-cdn.xitu.io/2018/11/21/16734a366f6ee0f9?w=563&h=222&f=png&s=28679">
+<meta property="og:image" content="https://user-gold-cdn.xitu.io/2018/11/21/16734cb58a98cf06?w=1470&h=738&f=png&s=195384">
+<meta property="og:updated_time" content="2019-01-02T05:46:00.766Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Lh的博客">
+<meta name="twitter:description" content="redis的事件驱动redis性能很好，而且是一个单线程的框架。得益于redis主要通过异步IO， 多路复用的技术，使用反应堆（reactor）模式，把大量的io操作通过消息驱动的方式单线程一条条处理，这样可以很好的利用CPU资源。因为没有同步调用，所以处理速度非常快。使得多个Client访问redis-server时候，并发性能很高。那么具体redis是如何实现的呢？ 1 redis的多路复用技">
+<meta name="twitter:image" content="https://user-gold-cdn.xitu.io/2018/11/21/16734a2bd384a15e?w=513&h=303&f=png&s=31507">
+  
+    <link rel="alternate" href="/atom.xml" title="Lh的博客" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+</html>
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Lh的博客</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">努力学习吧，骚年</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="http://yoursite.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-redis个人源码分析笔记3(redis的事件驱动源码分析)" class="article article-type-post" itemscope="" itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/" class="article-date">
+  <time datetime="2019-01-02T05:45:39.465Z" itemprop="datePublished">2019-01-02</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h1 id="redis的事件驱动"><a href="#redis的事件驱动" class="headerlink" title="redis的事件驱动"></a>redis的事件驱动</h1><p>redis性能很好，而且是一个单线程的框架。得益于redis主要通过异步IO， 多路复用的技术，使用反应堆（reactor）模式，把大量的io操作通过消息驱动的方式单线程一条条处理，这样可以很好的利用CPU资源。因为没有同步调用，所以处理速度非常快。使得多个Client访问redis-server时候，并发性能很高。<br>那么具体redis是如何实现的呢？</p>
+<h2 id="1-redis的多路复用技术"><a href="#1-redis的多路复用技术" class="headerlink" title="1 redis的多路复用技术"></a>1 redis的多路复用技术</h2><p>redis是一个C/S架构的框架，所以支持多个Client通过网络来访问Server端。redis-server为了同时支持多个client发来的数据库操作请求，使用了IO多路复用技术。</p>
+<p><img src="https://user-gold-cdn.xitu.io/2018/11/21/16734a2bd384a15e?w=513&amp;h=303&amp;f=png&amp;s=31507" alt="image">  </p>
+<p>在一个线程里面，通过系统UNIX提供的系统API(select, poll, epoll等)，同时对n个文件描述符fd（socket也可以抽象成为文件描述符），进行读写侦听，一旦系统侦听的fd发生了 可读/可写事件的时候，通过系统API函数，可以获取到对应的fd，对于对应的文件事件进行分派，同时处理。  </p>
+<blockquote>
+<p>类似于一个老师（redis-server）一个人照看一个班n个学生（n个redis-cli的socket），一旦某个学生举手（socket 文件描述符发生可读可写事件），这个老师立马处理这个学生的需求（文件事件分发器），处理完了立马回来，看着一个班的n个学生，看看是不是还有人举手，周而复始的进行处理。  </p>
+</blockquote>
+<p>epoll， kqueue， select，evport 这几种其实都是UNIX的多路复用接口，因为redis对于类unix操作系统的兼容性其实做的比较好，所以redis对这几种接口都是支持的。对应的代码实现分别是：ae_epoll.c, ae_kqueue.c, ae_select.c, ae_evport.c.<br><img src="https://user-gold-cdn.xitu.io/2018/11/21/16734a366f6ee0f9?w=563&amp;h=222&amp;f=png&amp;s=28679" alt=""></p>
+<p>因为我使用的是Ubuntu操作系统，所以本文就使用epoll为例子，看下redis的epoll的事件驱动是如何实现的。</p>
+<h2 id="2-redis-的epoll源码分析"><a href="#2-redis-的epoll源码分析" class="headerlink" title="2 redis 的epoll源码分析"></a>2 redis 的epoll源码分析</h2><h2 id="2-1-redis-eventpoll-的启动初始化"><a href="#2-1-redis-eventpoll-的启动初始化" class="headerlink" title="2.1 redis eventpoll 的启动初始化"></a>2.1 redis eventpoll 的启动初始化</h2><p>在redi-server启动的时候，会走到initServer()函数中，这个函数是对<figure class="highlight plain"><figcaption><span>server; ```这个全局唯一变量的初始化，这个server的结构定义了整个server相关的所有信息，具体结构非常复杂，这里就按下不表，但是注意里面有一个结构：</span></figcaption><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">```</span><br><span class="line">aeEventLoop *el;  //这个就是redis的所有事件循环的注册结构</span><br></pre></td></tr></table></figure></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">/* State of an event based program */</span><br><span class="line">typedef struct aeEventLoop &#123;</span><br><span class="line">    int maxfd;   /* highest file descriptor currently registered */</span><br><span class="line">    int setsize; /* max number of file descriptors tracked */</span><br><span class="line">    long long timeEventNextId;</span><br><span class="line">    time_t lastTime;     /* Used to detect system clock skew */</span><br><span class="line">    aeFileEvent *events; /* Registered events */</span><br><span class="line">    aeFiredEvent *fired; /* Fired events */</span><br><span class="line">    aeTimeEvent *timeEventHead;</span><br><span class="line">    int stop;</span><br><span class="line">    void *apidata; /* This is used for polling API specific data */</span><br><span class="line">    aeBeforeSleepProc *beforesleep;</span><br><span class="line">    aeBeforeSleepProc *aftersleep;</span><br><span class="line">&#125; aeEventLoop;</span><br></pre></td></tr></table></figure>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">/* File event structure */</span><br><span class="line">typedef struct aeFileEvent &#123;</span><br><span class="line">    int mask; /* one of AE_(READABLE|WRITABLE|BARRIER) */</span><br><span class="line">    aeFileProc *rfileProc;</span><br><span class="line">    aeFileProc *wfileProc;</span><br><span class="line">    void *clientData;</span><br><span class="line">&#125; aeFileEvent;</span><br></pre></td></tr></table></figure>
+<p>从代码上不太能看清楚里面的结构，看下图：</p>
+<p><img src="https://user-gold-cdn.xitu.io/2018/11/21/16734cb58a98cf06?w=1470&amp;h=738&amp;f=png&amp;s=195384" alt="">  </p>
+<p>具体的初始化函数aeCreateEventLoop如下：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">aeEventLoop *aeCreateEventLoop(int setsize) &#123;</span><br><span class="line">    aeEventLoop *eventLoop;</span><br><span class="line">    int i;</span><br><span class="line"></span><br><span class="line">    if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;</span><br><span class="line">    eventLoop-&gt;events = zmalloc(sizeof(aeFileEvent)*setsize);</span><br><span class="line">    eventLoop-&gt;fired = zmalloc(sizeof(aeFiredEvent)*setsize);</span><br><span class="line">    if (eventLoop-&gt;events == NULL || eventLoop-&gt;fired == NULL) goto err;</span><br><span class="line">    eventLoop-&gt;setsize = setsize;</span><br><span class="line">    eventLoop-&gt;lastTime = time(NULL);</span><br><span class="line">    eventLoop-&gt;timeEventHead = NULL;</span><br><span class="line">    eventLoop-&gt;timeEventNextId = 0;</span><br><span class="line">    eventLoop-&gt;stop = 0;</span><br><span class="line">    eventLoop-&gt;maxfd = -1;</span><br><span class="line">    eventLoop-&gt;beforesleep = NULL;</span><br><span class="line">    eventLoop-&gt;aftersleep = NULL;</span><br><span class="line">    if (aeApiCreate(eventLoop) == -1) goto err;  //主要是初始化eventLoop-&gt;apidata</span><br><span class="line">    // Events with mask == AE_NONE are not set.</span><br><span class="line">    //So let&apos;s initialize the vector with it. </span><br><span class="line">    for (i = 0; i &lt; setsize; i++)</span><br><span class="line">       eventLoop-&gt;events[i].mask = AE_NONE;</span><br><span class="line">    return eventLoop;</span><br><span class="line"></span><br><span class="line">err:</span><br><span class="line">    if (eventLoop) &#123;</span><br><span class="line">     zfree(eventLoop-&gt;events);</span><br><span class="line">        zfree(eventLoop-&gt;fired);</span><br><span class="line">        zfree(eventLoop);</span><br><span class="line">    &#125;</span><br><span class="line">    return NULL;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>aeApiCreate<br><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> <span class="title">aeApiCreate</span><span class="params">(aeEventLoop *eventLoop)</span> </span>&#123;</span><br><span class="line">    aeApiState *state = zmalloc(<span class="keyword">sizeof</span>(aeApiState));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!state) <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">    state-&gt;events = zmalloc(<span class="keyword">sizeof</span>(struct epoll_event)*eventLoop-&gt;setsize);</span><br><span class="line">    <span class="keyword">if</span> (!state-&gt;events) &#123;</span><br><span class="line">        zfree(state);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    state-&gt;epfd = epoll_create(<span class="number">1024</span>); <span class="comment">/* 1024 is just a hint for the kernel */</span></span><br><span class="line">    <span class="keyword">if</span> (state-&gt;epfd == <span class="number">-1</span>) &#123;</span><br><span class="line">        zfree(state-&gt;events);</span><br><span class="line">        zfree(state);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    eventLoop-&gt;apidata = state;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>接着在initServer函数中，redis会根据配置尝试去侦听端口：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">/* Open the TCP listening socket for the user commands. */</span><br><span class="line">if (server.port != 0 &amp;&amp;</span><br><span class="line">    listenToPort(server.port,server.ipfd,&amp;server.ipfd_count) == C_ERR)</span><br><span class="line">    exit(1);</span><br></pre></td></tr></table></figure></p>
+<p>在listenToPort函数中，redis会尝试bind/listen多个ip，同时考虑了IPV4/IPV6两种场景，源码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">listenToPort</span><span class="params">(<span class="keyword">int</span> port, <span class="keyword">int</span> *fds, <span class="keyword">int</span> *count)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> j;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Force binding of 0.0.0.0 if no bind address is specified, always</span></span><br><span class="line"><span class="comment">     * entering the loop if j == 0. */</span></span><br><span class="line">    <span class="keyword">if</span> (server.bindaddr_count == <span class="number">0</span>) server.bindaddr[<span class="number">0</span>] = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">for</span> (j = <span class="number">0</span>; j &lt; server.bindaddr_count || j == <span class="number">0</span>; j++) &#123;</span><br><span class="line">        <span class="keyword">if</span> (server.bindaddr[j] == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            <span class="keyword">int</span> unsupported = <span class="number">0</span>;</span><br><span class="line">            <span class="comment">/* Bind * for both IPv6 and IPv4, we enter here only if</span></span><br><span class="line"><span class="comment">             * server.bindaddr_count == 0. */</span></span><br><span class="line">            fds[*count] = anetTcp6Server(server.neterr,port,<span class="literal">NULL</span>,</span><br><span class="line">                server.tcp_backlog);</span><br><span class="line">            <span class="keyword">if</span> (fds[*count] != ANET_ERR) &#123;</span><br><span class="line">                anetNonBlock(<span class="literal">NULL</span>,fds[*count]);</span><br><span class="line">                (*count)++;</span><br><span class="line">            &#125; <span class="keyword">else</span> <span class="keyword">if</span> (errno == EAFNOSUPPORT) &#123;</span><br><span class="line">                unsupported++;</span><br><span class="line">                serverLog(LL_WARNING,<span class="string">"Not listening to IPv6: unsupproted"</span>);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> (*count == <span class="number">1</span> || unsupported) &#123;</span><br><span class="line">                <span class="comment">/* Bind the IPv4 address as well. */</span></span><br><span class="line">                fds[*count] = anetTcpServer(server.neterr,port,<span class="literal">NULL</span>,</span><br><span class="line">                    server.tcp_backlog);</span><br><span class="line">                <span class="keyword">if</span> (fds[*count] != ANET_ERR) &#123;</span><br><span class="line">                    anetNonBlock(<span class="literal">NULL</span>,fds[*count]);</span><br><span class="line">                    (*count)++;</span><br><span class="line">                &#125; <span class="keyword">else</span> <span class="keyword">if</span> (errno == EAFNOSUPPORT) &#123;</span><br><span class="line">                    unsupported++;</span><br><span class="line">                    serverLog(LL_WARNING,<span class="string">"Not listening to IPv4: unsupproted"</span>);</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">/* Exit the loop if we were able to bind * on IPv4 and IPv6,</span></span><br><span class="line"><span class="comment">             * otherwise fds[*count] will be ANET_ERR and we'll print an</span></span><br><span class="line"><span class="comment">             * error and return to the caller with an error. */</span></span><br><span class="line">            <span class="keyword">if</span> (*count + unsupported == <span class="number">2</span>) <span class="keyword">break</span>;</span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (<span class="built_in">strchr</span>(server.bindaddr[j],<span class="string">':'</span>)) &#123;</span><br><span class="line">            <span class="comment">/* Bind IPv6 address. */</span></span><br><span class="line">            fds[*count] = anetTcp6Server(server.neterr,port,server.bindaddr[j],</span><br><span class="line">                server.tcp_backlog);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="comment">/* Bind IPv4 address. */</span></span><br><span class="line">            fds[*count] = anetTcpServer(server.neterr,port,server.bindaddr[j],</span><br><span class="line">                server.tcp_backlog);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (fds[*count] == ANET_ERR) &#123;</span><br><span class="line">            serverLog(LL_WARNING,</span><br><span class="line">                <span class="string">"Creating Server TCP listening socket %s:%d: %s"</span>,</span><br><span class="line">                server.bindaddr[j] ? server.bindaddr[j] : <span class="string">"*"</span>,</span><br><span class="line">                port, server.neterr);</span><br><span class="line">            <span class="keyword">return</span> C_ERR;</span><br><span class="line">        &#125;</span><br><span class="line">        anetNonBlock(<span class="literal">NULL</span>,fds[*count]);</span><br><span class="line">        (*count)++;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> C_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>创建成功后，作为的server端的socket会做为文件描述符被存储在server的ipfd数组中：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">int ipfd[CONFIG_BINDADDR_MAX]; /* TCP socket file descriptors */</span><br></pre></td></tr></table></figure></p>
+<p>接着还是在initServer函数中，会为这几个server socket的ipfd 创建事件注册，源码如下：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">/* Create an event handler for accepting new connections in TCP and Unix</span><br><span class="line"> * domain sockets. */</span><br><span class="line">for (j = 0; j &lt; server.ipfd_count; j++) &#123;</span><br><span class="line">    if (aeCreateFileEvent(server.el, server.ipfd[j], AE_READABLE,</span><br><span class="line">        acceptTcpHandler,NULL) == AE_ERR)</span><br><span class="line">        &#123;</span><br><span class="line">            serverPanic(</span><br><span class="line">                &quot;Unrecoverable error creating server.ipfd file event.&quot;);</span><br><span class="line">        &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>可以看出aeCreateFileEvent 这个函数会把文件描述符server.ipfd[i]和事件AE_READABLE，以及回调函数acceptTcpHandler做了关联，也就是每当client发来tcp建链请求事件发生时，就触发acceptTcpHandler函数。<br>下面看看这个函数到底是如何利用上面图中的数据结构，把这几样东西结合在一起的。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,</span><br><span class="line">        aeFileProc *proc, void *clientData)</span><br><span class="line">&#123;</span><br><span class="line">    if (fd &gt;= eventLoop-&gt;setsize) &#123;</span><br><span class="line">        errno = ERANGE;</span><br><span class="line">        return AE_ERR;</span><br><span class="line">    &#125;</span><br><span class="line">    aeFileEvent *fe = &amp;eventLoop-&gt;events[fd];</span><br><span class="line"></span><br><span class="line">    if (aeApiAddEvent(eventLoop, fd, mask) == -1)</span><br><span class="line">        return AE_ERR;</span><br><span class="line">    fe-&gt;mask |= mask;</span><br><span class="line">    if (mask &amp; AE_READABLE) fe-&gt;rfileProc = proc;</span><br><span class="line">    if (mask &amp; AE_WRITABLE) fe-&gt;wfileProc = proc;</span><br><span class="line">    fe-&gt;clientData = clientData;</span><br><span class="line">    if (fd &gt; eventLoop-&gt;maxfd)</span><br><span class="line">        eventLoop-&gt;maxfd = fd;</span><br><span class="line">    return AE_OK;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从上面的源码可以看出，这个函数主要做了两件事，一个就是把事件，回调函数保存在eventLoop-&gt;events[fd]结构中。再然后就是调用了aeApiAddEvent，而这个函数其实就是epoll接口函数的一层封装。具体实现如下：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) &#123;</span><br><span class="line">    aeApiState *state = eventLoop-&gt;apidata;</span><br><span class="line">    struct epoll_event ee = &#123;0&#125;; /* avoid valgrind warning */</span><br><span class="line">    /* If the fd was already monitored for some event, we need a MOD</span><br><span class="line">     * operation. Otherwise we need an ADD operation. */</span><br><span class="line">    int op = eventLoop-&gt;events[fd].mask == AE_NONE ?</span><br><span class="line">            EPOLL_CTL_ADD : EPOLL_CTL_MOD;</span><br><span class="line"></span><br><span class="line">    ee.events = 0;</span><br><span class="line">    mask |= eventLoop-&gt;events[fd].mask; /* Merge old events */</span><br><span class="line">    if (mask &amp; AE_READABLE) ee.events |= EPOLLIN;</span><br><span class="line">    if (mask &amp; AE_WRITABLE) ee.events |= EPOLLOUT;</span><br><span class="line">    ee.data.fd = fd;</span><br><span class="line">    if (epoll_ctl(state-&gt;epfd,op,fd,&amp;ee) == -1) return -1;</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>代码逻辑很清晰，其实核心就是调用了epoll接口中的epoll_ctl，把server socket的fd放到了epoll中进行monitor。</p>
+<h2 id="2-2-redis-服务的epoll循环调用"><a href="#2-2-redis-服务的epoll循环调用" class="headerlink" title="2.2 redis 服务的epoll循环调用"></a>2.2 redis 服务的epoll循环调用</h2><p>初始化完了后，redis就会进入循环状态，代码如下：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">void aeMain(aeEventLoop *eventLoop) &#123;</span><br><span class="line">    eventLoop-&gt;stop = 0;</span><br><span class="line">    while (!eventLoop-&gt;stop) &#123;</span><br><span class="line">        if (eventLoop-&gt;beforesleep != NULL)</span><br><span class="line">            eventLoop-&gt;beforesleep(eventLoop);</span><br><span class="line">        aeProcessEvents(eventLoop, AE_ALL_EVENTS|AE_CALL_AFTER_SLEEP);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>循环状态会不停的去尝试处理事件，也就是aeProcessEvents函数。这个函数会处理redis所有事件，包括文件事件和定时器事件，对于文件事件来说，核心代码如下：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line">/* Call the multiplexing API, will return only on timeout or when</span><br><span class="line">   * some event fires. */</span><br><span class="line">  numevents = aeApiPoll(eventLoop, tvp);//这里会去当前的反应堆里面看看有没待处理的事件</span><br><span class="line"></span><br><span class="line">  /* After sleep callback. */</span><br><span class="line">  if (eventLoop-&gt;aftersleep != NULL &amp;&amp; flags &amp; AE_CALL_AFTER_SLEEP)</span><br><span class="line">      eventLoop-&gt;aftersleep(eventLoop);</span><br><span class="line"></span><br><span class="line">  for (j = 0; j &lt; numevents; j++) &#123;</span><br><span class="line">      aeFileEvent *fe = &amp;eventLoop-&gt;events[eventLoop-&gt;fired[j].fd];</span><br><span class="line">      int mask = eventLoop-&gt;fired[j].mask;</span><br><span class="line">      int fd = eventLoop-&gt;fired[j].fd;</span><br><span class="line">      int fired = 0; /* Number of events fired for current fd. */</span><br><span class="line"></span><br><span class="line">      /* Normally we execute the readable event first, and the writable</span><br><span class="line">       * event laster. This is useful as sometimes we may be able</span><br><span class="line">       * to serve the reply of a query immediately after processing the</span><br><span class="line">       * query.</span><br><span class="line">       *</span><br><span class="line">       * However if AE_BARRIER is set in the mask, our application is</span><br><span class="line">       * asking us to do the reverse: never fire the writable event</span><br><span class="line">       * after the readable. In such a case, we invert the calls.</span><br><span class="line">       * This is useful when, for instance, we want to do things</span><br><span class="line">       * in the beforeSleep() hook, like fsynching a file to disk,</span><br><span class="line">       * before replying to a client. */</span><br><span class="line">      int invert = fe-&gt;mask &amp; AE_BARRIER;</span><br><span class="line"></span><br><span class="line">      /* Note the fe-&gt;mask &amp; mask &amp; ... code: maybe an already</span><br><span class="line">       * processed event removed an element that fired and we still</span><br><span class="line">       * didnt processed, so we check if the event is still valid.</span><br><span class="line">       *</span><br><span class="line">       * Fire the readable event if the call sequence is not</span><br><span class="line">       * inverted. */</span><br><span class="line">      if (!invert &amp;&amp; fe-&gt;mask &amp; mask &amp; AE_READABLE) &#123;</span><br><span class="line">          fe-&gt;rfileProc(eventLoop,fd,fe-&gt;clientData,mask);</span><br><span class="line">          fired++;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      /* Fire the writable event. */</span><br><span class="line">      if (fe-&gt;mask &amp; mask &amp; AE_WRITABLE) &#123;</span><br><span class="line">          if (!fired || fe-&gt;wfileProc != fe-&gt;rfileProc) &#123;</span><br><span class="line">              fe-&gt;wfileProc(eventLoop,fd,fe-&gt;clientData,mask);</span><br><span class="line">              fired++;</span><br><span class="line">          &#125;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      /* If we have to invert the call, fire the readable event now</span><br><span class="line">       * after the writable one. */</span><br><span class="line">      if (invert &amp;&amp; fe-&gt;mask &amp; mask &amp; AE_READABLE) &#123;</span><br><span class="line">          if (!fired || fe-&gt;wfileProc != fe-&gt;rfileProc) &#123;</span><br><span class="line">              fe-&gt;rfileProc(eventLoop,fd,fe-&gt;clientData,mask);</span><br><span class="line">              fired++;</span><br><span class="line">          &#125;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      processed++;</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) &#123;</span><br><span class="line">    aeApiState *state = eventLoop-&gt;apidata;</span><br><span class="line">    int retval, numevents = 0;</span><br><span class="line"></span><br><span class="line">    retval = epoll_wait(state-&gt;epfd,state-&gt;events,eventLoop-&gt;setsize,</span><br><span class="line">            tvp ? (tvp-&gt;tv_sec*1000 + tvp-&gt;tv_usec/1000) : -1);</span><br><span class="line">    if (retval &gt; 0) &#123;</span><br><span class="line">        int j;</span><br><span class="line"></span><br><span class="line">        numevents = retval;</span><br><span class="line">        for (j = 0; j &lt; numevents; j++) &#123;</span><br><span class="line">            int mask = 0;</span><br><span class="line">            struct epoll_event *e = state-&gt;events+j;</span><br><span class="line"></span><br><span class="line">            if (e-&gt;events &amp; EPOLLIN) mask |= AE_READABLE;</span><br><span class="line">            if (e-&gt;events &amp; EPOLLOUT) mask |= AE_WRITABLE;</span><br><span class="line">            if (e-&gt;events &amp; EPOLLERR) mask |= AE_WRITABLE;</span><br><span class="line">            if (e-&gt;events &amp; EPOLLHUP) mask |= AE_WRITABLE;</span><br><span class="line">            eventLoop-&gt;fired[j].fd = e-&gt;data.fd;</span><br><span class="line">            eventLoop-&gt;fired[j].mask = mask;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    return numevents;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>每次循环都会调用aeApiPoll，而这个函数其实还是epoll接口函数的一层封装，代码逻辑其实就是看看当前monitor的文件描述符是否有事件可以触发，如果有的话，就调用回调函数进行处理。</p>
+<h2 id="2-3-redis-客户端建立连接和处理流程"><a href="#2-3-redis-客户端建立连接和处理流程" class="headerlink" title="2.3 redis 客户端建立连接和处理流程"></a>2.3 redis 客户端建立连接和处理流程</h2><p>在2.1小节里面已经提到了，对于server的socket 的文件描述符和AE_READABLE事件，关联了一个回调函数acceptTcpHandler，这个函数就是当server 的socket可读的时候，触发的函数。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) &#123;</span><br><span class="line">    int cport, cfd, max = MAX_ACCEPTS_PER_CALL;</span><br><span class="line">    char cip[NET_IP_STR_LEN];</span><br><span class="line">    UNUSED(el);</span><br><span class="line">    UNUSED(mask);</span><br><span class="line">    UNUSED(privdata);</span><br><span class="line"></span><br><span class="line">    while(max--) &#123;//因为可能同时有多个client发起链接</span><br><span class="line">        cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &amp;cport);</span><br><span class="line">        if (cfd == ANET_ERR) &#123;</span><br><span class="line">            if (errno != EWOULDBLOCK)</span><br><span class="line">                serverLog(LL_WARNING,</span><br><span class="line">                          &quot;Accepting client connection: %s&quot;, server.neterr);</span><br><span class="line">            return;</span><br><span class="line">        &#125;</span><br><span class="line">        serverLog(LL_VERBOSE,&quot;Accepted %s:%d&quot;, cip, cport);</span><br><span class="line">        acceptCommonHandler(cfd,0,cip);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>可以看出来redis会用socket 的accept 函数去一个个的接受tcp的建链请求，然后转交<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure></p>
+<p>#define MAX_ACCEPTS_PER_CALL 1000<br>static void acceptCommonHandler(int fd, int flags, char <em>ip) {<br>    client </em>c;<br>    if ((c = createClient(fd)) == NULL) {<br>        serverLog(LL_WARNING,<br>            “Error registering fd event for the new client: %s (fd=%d)”,<br>            strerror(errno),fd);<br>        close(fd); /<em> May be already closed, just ignore errors </em>/<br>        return;<br>    }<br>…后面还有一些不影响主流程，所以暂时略过不表。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">这里会创建一个client的数据区，用来表示一个客户端，具体的逻辑如下：</span><br></pre></td></tr></table></figure>
+<p>client <em>createClient(int fd) {<br>    client </em>c = zmalloc(sizeof(client));</p>
+<pre><code>/* passing -1 as fd it is possible to create a non connected client.
+ * This is useful since all the commands needs to be executed
+ * in the context of a client. When commands are executed in other
+ * contexts (for instance a Lua script) we need a non connected client. */
+if (fd != -1) {
+    anetNonBlock(NULL,fd);
+    anetEnableTcpNoDelay(NULL,fd);
+    if (server.tcpkeepalive)
+        anetKeepAlive(NULL,fd,server.tcpkeepalive);
+    if (aeCreateFileEvent(server.el,fd,AE_READABLE,
+        readQueryFromClient, c) == AE_ERR)  
+    {
+        close(fd);
+        zfree(c);
+        return NULL;
+    }
+}
+
+selectDb(c,0);
+uint64_t client_id;
+atomicGetIncr(server.next_client_id,client_id,1);
+c-&gt;id = client_id;
+c-&gt;fd = fd;
+c-&gt;name = NULL;
+c-&gt;bufpos = 0;
+c-&gt;qb_pos = 0;
+c-&gt;querybuf = sdsempty();
+c-&gt;pending_querybuf = sdsempty();
+c-&gt;querybuf_peak = 0;
+c-&gt;reqtype = 0;
+c-&gt;argc = 0;
+c-&gt;argv = NULL;
+c-&gt;cmd = c-&gt;lastcmd = NULL;
+c-&gt;multibulklen = 0;
+c-&gt;bulklen = -1;
+c-&gt;sentlen = 0;
+c-&gt;flags = 0;
+c-&gt;ctime = c-&gt;lastinteraction = server.unixtime;
+c-&gt;authenticated = 0;
+c-&gt;replstate = REPL_STATE_NONE;
+c-&gt;repl_put_online_on_ack = 0;
+c-&gt;reploff = 0;
+c-&gt;read_reploff = 0;
+c-&gt;repl_ack_off = 0;
+c-&gt;repl_ack_time = 0;
+c-&gt;slave_listening_port = 0;
+c-&gt;slave_ip[0] = &apos;\0&apos;;
+c-&gt;slave_capa = SLAVE_CAPA_NONE;
+c-&gt;reply = listCreate();
+c-&gt;reply_bytes = 0;
+c-&gt;obuf_soft_limit_reached_time = 0;
+listSetFreeMethod(c-&gt;reply,freeClientReplyValue);
+listSetDupMethod(c-&gt;reply,dupClientReplyValue);
+c-&gt;btype = BLOCKED_NONE;
+c-&gt;bpop.timeout = 0;
+c-&gt;bpop.keys = dictCreate(&amp;objectKeyHeapPointerValueDictType,NULL);
+c-&gt;bpop.target = NULL;
+c-&gt;bpop.xread_group = NULL;
+c-&gt;bpop.xread_consumer = NULL;
+c-&gt;bpop.xread_group_noack = 0;
+c-&gt;bpop.numreplicas = 0;
+c-&gt;bpop.reploffset = 0;
+c-&gt;woff = 0;
+c-&gt;watched_keys = listCreate();
+c-&gt;pubsub_channels = dictCreate(&amp;objectKeyPointerValueDictType,NULL);
+c-&gt;pubsub_patterns = listCreate();
+c-&gt;peerid = NULL;
+c-&gt;client_list_node = NULL;
+listSetFreeMethod(c-&gt;pubsub_patterns,decrRefCountVoid);
+listSetMatchMethod(c-&gt;pubsub_patterns,listMatchObjects);
+if (fd != -1) linkClient(c);
+initClientMultiState(c);
+return c;
+</code></pre><p>}<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">createClient  这个函数其实做了两件事</span><br><span class="line">- 申请内存同时初始化了client结构体； </span><br><span class="line">- 调用把客户端的socket文件描述符fd和AE_READABLE进行关联,当客户端发来消息，调用``` readQueryFromClient ```函数，放入了反应堆server.el中</span><br></pre></td></tr></table></figure></p>
+<pre><code>if (aeCreateFileEvent(server.el,fd,AE_READABLE,
+    readQueryFromClient, c) == AE_ERR)
+{
+    close(fd);
+    zfree(c);
+    return NULL;
+}
+</code></pre> <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line">而当redis-server 收到某个客户端发来的数据库操作请求时，就会触发下面这个回调函数，这个函数中会从socket中读数据，并开始处理。</span><br></pre></td></tr></table></figure>
+<p>void readQueryFromClient(aeEventLoop <em>el, int fd, void </em>privdata, int mask) {<br>    client <em>c = (client</em>) privdata;<br>    int nread, readlen;<br>    size_t qblen;<br>    UNUSED(el);<br>    UNUSED(mask);</p>
+<pre><code>readlen = PROTO_IOBUF_LEN;
+/* If this is a multi bulk request, and we are processing a bulk reply
+ * that is large enough, try to maximize the probability that the query
+ * buffer contains exactly the SDS string representing the object, even
+ * at the risk of requiring more read(2) calls. This way the function
+ * processMultiBulkBuffer() can avoid copying buffers to create the
+ * Redis Object representing the argument. */
+if (c-&gt;reqtype == PROTO_REQ_MULTIBULK &amp;&amp; c-&gt;multibulklen &amp;&amp; c-&gt;bulklen != -1
+    &amp;&amp; c-&gt;bulklen &gt;= PROTO_MBULK_BIG_ARG)
+{
+    ssize_t remaining = (size_t)(c-&gt;bulklen+2)-sdslen(c-&gt;querybuf);
+
+    /* Note that the &apos;remaining&apos; variable may be zero in some edge case,
+     * for example once we resume a blocked client after CLIENT PAUSE. */
+    if (remaining &gt; 0 &amp;&amp; remaining &lt; readlen) readlen = remaining;
+}
+
+qblen = sdslen(c-&gt;querybuf);
+if (c-&gt;querybuf_peak &lt; qblen) c-&gt;querybuf_peak = qblen;
+c-&gt;querybuf = sdsMakeRoomFor(c-&gt;querybuf, readlen);
+nread = read(fd, c-&gt;querybuf+qblen, readlen);//此处调用socket接口函数从client socket读取数据，然后进行处理
+if (nread == -1) {
+    if (errno == EAGAIN) {
+        return;
+    } else {
+        serverLog(LL_VERBOSE, &quot;Reading from client: %s&quot;,strerror(errno));
+        freeClient(c);
+        return;
+    }
+} else if (nread == 0) {
+    serverLog(LL_VERBOSE, &quot;Client closed connection&quot;);
+    freeClient(c);
+    return;
+} else if (c-&gt;flags &amp; CLIENT_MASTER) {
+    /* Append the query buffer to the pending (not applied) buffer
+     * of the master. We&apos;ll use this buffer later in order to have a
+     * copy of the string applied by the last command executed. */
+    c-&gt;pending_querybuf = sdscatlen(c-&gt;pending_querybuf,
+                                    c-&gt;querybuf+qblen,nread);
+}
+
+sdsIncrLen(c-&gt;querybuf,nread);
+c-&gt;lastinteraction = server.unixtime;
+if (c-&gt;flags &amp; CLIENT_MASTER) c-&gt;read_reploff += nread;
+server.stat_net_input_bytes += nread;
+if (sdslen(c-&gt;querybuf) &gt; server.client_max_querybuf_len) {
+    sds ci = catClientInfoString(sdsempty(),c), bytes = sdsempty();
+
+    bytes = sdscatrepr(bytes,c-&gt;querybuf,64);
+    serverLog(LL_WARNING,&quot;Closing client that reached max query buffer length: %s (qbuf initial bytes: %s)&quot;, ci, bytes);
+    sdsfree(ci);
+    sdsfree(bytes);
+    freeClient(c);
+    return;
+}
+
+/* Time to process the buffer. If the client is a master we need to
+ * compute the difference between the applied offset before and after
+ * processing the buffer, to understand how much of the replication stream
+ * was actually applied to the master state: this quantity, and its
+ * corresponding part of the replication stream, will be propagated to
+ * the sub-slaves and to the replication backlog. */
+processInputBufferAndReplicate(c);
+</code></pre><p>}<br><code>`</code></p>
+<p>在上面的函数中会分配一个最够大的buffer，同时调用socket接口函数从client socket读取数据，然后进行处理。最后交到<code>processInputBufferAndReplicate(c);</code> 这个函数里面会进行redis 正常命令的解析和处理。</p>
+<p>至此一个基本的启动listen端口，然后提供服务，再到客户端发来建链请求，然后发来数据库操作业务消息流程就全部串起来了。</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="http://yoursite.com/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/" data-id="cjqerm09o000268kp8qel111q" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          (no title)
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title"></div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+
+  
+    
+
+  
+    
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Archives</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/01/">January 2019</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记5(RDB持久化机制)/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记3(redis的事件驱动源码分析)/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记2(dict的实现原理)/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/redis个人源码分析笔记1(hpyerloglog原理）/">(no title)</a>
+          </li>
+        
+          <li>
+            <a href="/2019/01/02/hello-world/">Hello World</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2019 Lin-Hao<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  <link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+  <script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+<script src="/js/script.js"></script>
+
+
+
+  </div>
+</body>
+</html>
